@@ -7,3 +7,6 @@ dist/
 *.local
 steamcmd/
 
+# Manter arquivo de jogos iniciais no Git
+!backend/data/jogos-iniciais.json
+
