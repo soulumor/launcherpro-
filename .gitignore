@@ -1,0 +1,9 @@
+node_modules/
+*.db
+*.log
+.env
+dist/
+.DS_Store
+*.local
+steamcmd/
+

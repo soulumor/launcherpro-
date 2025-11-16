@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+/* CSS Variables from Figma Design */
+:root {
+  --font-size: 16px;
+  --background: #000000;
+  --foreground: #f3f4f6;
+  --card: #1a1a1a;
+  --card-foreground: #f3f4f6;
+  --popover: #1a1a1a;
+  --popover-foreground: #f3f4f6;
+  --primary: #06b6d4;
+  --primary-foreground: #000000;
+  --secondary: #1a1a1a;
+  --secondary-foreground: #f3f4f6;
+  --muted: #2a2a2a;
+  --muted-foreground: #9ca3af;
+  --accent: #1a1a1a;
+  --accent-foreground: #f3f4f6;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #374151;
+  --input: #374151;
+  --input-background: #1a1a1a;
+  --ring: #06b6d4;
+  --radius: 0.5rem;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100vh);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-scan-line {
+  animation: scan-line 8s linear infinite;
+}
+
+.gamer-text {
+  font-family: 'Orbitron', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px currentColor;
+}
+
+.gamer-border {
+  border: 2px solid;
+  border-image: linear-gradient(45deg, #00ffff, #b026ff, #00ffff) 1;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.gamer-glow {
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.5),
+              0 0 20px rgba(0, 255, 255, 0.3),
+              0 0 30px rgba(0, 255, 255, 0.1);
+}
+
+.gamer-glow-green {
+  box-shadow: 0 0 10px rgba(0, 255, 65, 0.5),
+              0 0 20px rgba(0, 255, 65, 0.3),
+              0 0 30px rgba(0, 255, 65, 0.1);
+}
+
+.gamer-glow-purple {
+  box-shadow: 0 0 10px rgba(176, 38, 255, 0.5),
+              0 0 20px rgba(176, 38, 255, 0.3),
+              0 0 30px rgba(176, 38, 255, 0.1);
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Rajdhani', sans-serif;
+    background-image: 
+      radial-gradient(circle at 20% 50%, rgba(6, 182, 212, 0.03) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+  
+  * {
+    border-color: var(--border);
+  }
+}
+
