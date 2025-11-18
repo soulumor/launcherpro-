@@ -51,10 +51,36 @@ app.use(helmet({
 }));
 
 // Middlewares
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*', // Em produção, defina CORS_ORIGIN com a URL do frontend
+// Configurar CORS para permitir localhost sempre e URL específica em produção
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (ex: Postman, mobile apps)
+    if (!origin) return callback(null, true);
+    
+    // Sempre permitir localhost (desenvolvimento e testes)
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return callback(null, true);
+    }
+    
+    // Se CORS_ORIGIN estiver definido, usar ele
+    if (process.env.CORS_ORIGIN) {
+      const allowedOrigins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+    }
+    
+    // Permitir tudo se CORS_ORIGIN não estiver definido (compatibilidade)
+    if (!process.env.CORS_ORIGIN) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
-}));
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' })); // Parse do corpo das requisições JSON com limite de tamanho
 
 // Middleware para obter IP real (importante para rate limiting)
