@@ -12,59 +12,84 @@ const { getDatabase } = require('../database/database');
 
 // GET /api/verificacao/status - Verifica status do verificador e última sincronização
 router.get('/status', (req, res) => {
-  const db = getDatabase();
-  
-  // Buscar última sincronização
-  db.get(
-    'SELECT * FROM sincronizacoes ORDER BY data_hora DESC LIMIT 1',
-    (err, ultimaSync) => {
-      if (err) {
-        return res.status(500).json({ error: 'Erro ao buscar status' });
-      }
-      
-      // Buscar estatísticas gerais
-      db.all(
-        `SELECT 
-          COUNT(*) as total_jogos,
-          (SELECT COUNT(*) FROM contas) as total_contas,
-          (SELECT COUNT(*) FROM sincronizacoes WHERE status = 'sucesso') as sincronizacoes_sucesso,
-          (SELECT COUNT(*) FROM sincronizacoes WHERE status = 'erro') as sincronizacoes_erro
-         FROM jogos`,
-        (err, stats) => {
-          if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
-          }
-          
-          const estatisticas = stats[0] || {};
-          
-          // Obter informações do timer
-          const timerInfo = obterInfoTimer();
-          
-          res.json({
-            message: 'Verificador automático está ativo',
-            intervalo: '60 minutos',
-            proximaVerificacao: 'Em execução periódica',
-            timer: timerInfo,
-            ultimaSincronizacao: ultimaSync ? {
-              data_hora: ultimaSync.data_hora,
-              tipo: ultimaSync.tipo,
-              jogos_encontrados: ultimaSync.jogos_encontrados,
-              jogos_adicionados: ultimaSync.jogos_adicionados,
-              contas_adicionadas: ultimaSync.contas_adicionadas,
-              status: ultimaSync.status,
-              mensagem: ultimaSync.mensagem
-            } : null,
-            estatisticas: {
-              total_jogos: estatisticas.total_jogos || 0,
-              total_contas: estatisticas.total_contas || 0,
-              sincronizacoes_sucesso: estatisticas.sincronizacoes_sucesso || 0,
-              sincronizacoes_erro: estatisticas.sincronizacoes_erro || 0
-            }
-          });
-        }
-      );
+  try {
+    const db = getDatabase();
+    
+    if (!db) {
+      return res.status(500).json({ error: 'Banco de dados não disponível' });
     }
-  );
+    
+    // Buscar última sincronização
+    db.get(
+      'SELECT * FROM sincronizacoes ORDER BY data_hora DESC LIMIT 1',
+      [],
+      (err, ultimaSync) => {
+        if (err) {
+          console.error('Erro ao buscar última sincronização:', err);
+          if (!res.headersSent) {
+            return res.status(500).json({ error: 'Erro ao buscar status' });
+          }
+          return;
+        }
+        
+        // Buscar estatísticas gerais
+        db.all(
+          `SELECT 
+            COUNT(*) as total_jogos,
+            (SELECT COUNT(*) FROM contas) as total_contas,
+            (SELECT COUNT(*) FROM sincronizacoes WHERE status = 'sucesso') as sincronizacoes_sucesso,
+            (SELECT COUNT(*) FROM sincronizacoes WHERE status = 'erro') as sincronizacoes_erro
+           FROM jogos`,
+          [],
+          (err, stats) => {
+            if (err) {
+              console.error('Erro ao buscar estatísticas:', err);
+              if (!res.headersSent) {
+                return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
+              }
+              return;
+            }
+            
+            if (res.headersSent) {
+              return;
+            }
+            
+            const estatisticas = stats && stats[0] ? stats[0] : {};
+            
+            // Obter informações do timer
+            const timerInfo = obterInfoTimer();
+            
+            res.json({
+              message: 'Verificador automático está ativo',
+              intervalo: '60 minutos',
+              proximaVerificacao: 'Em execução periódica',
+              timer: timerInfo,
+              ultimaSincronizacao: ultimaSync ? {
+                data_hora: ultimaSync.data_hora,
+                tipo: ultimaSync.tipo,
+                jogos_encontrados: ultimaSync.jogos_encontrados,
+                jogos_adicionados: ultimaSync.jogos_adicionados,
+                contas_adicionadas: ultimaSync.contas_adicionadas,
+                status: ultimaSync.status,
+                mensagem: ultimaSync.mensagem
+              } : null,
+              estatisticas: {
+                total_jogos: estatisticas.total_jogos || 0,
+                total_contas: estatisticas.total_contas || 0,
+                sincronizacoes_sucesso: estatisticas.sincronizacoes_sucesso || 0,
+                sincronizacoes_erro: estatisticas.sincronizacoes_erro || 0
+              }
+            });
+          }
+        );
+      }
+    );
+  } catch (error) {
+    console.error('Erro na rota /status:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // POST /api/verificacao/verificar - Força verificação manual imediata

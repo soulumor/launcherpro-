@@ -275,8 +275,18 @@ function getDatabase() {
     throw new Error('Banco de dados não foi inicializado. Chame initDatabase() primeiro.');
   }
   
+  // Garantir que pool está acessível no escopo
+  const currentPool = pool;
+  
   return {
     run: function(query, params, callback) {
+      if (!currentPool) {
+        if (callback) {
+          callback(new Error('Pool não inicializado'));
+        }
+        return;
+      }
+      
       const convertedQuery = convertPlaceholders(query);
       const convertedParams = params || [];
       
@@ -287,61 +297,117 @@ function getDatabase() {
         finalQuery = convertedQuery.replace(/;\s*$/, '') + ' RETURNING id';
       }
       
-      pool.query(finalQuery, convertedParams)
-        .then(result => {
+      try {
+        const queryPromise = currentPool.query(finalQuery, convertedParams);
+        if (!queryPromise || typeof queryPromise.then !== 'function') {
           if (callback) {
-            const lastID = result.rows[0]?.id || null;
-            const context = { lastID };
-            try {
-              callback.call(context, null);
-            } catch (err) {
-              if (callback.length === 1) {
-                callback(null);
-              } else {
-                callback(null, { lastID, changes: result.rowCount });
+            callback(new Error('pool.query não retornou uma Promise'));
+          }
+          return;
+        }
+        
+        queryPromise
+          .then(result => {
+            if (callback) {
+              const lastID = result.rows[0]?.id || null;
+              const context = { lastID };
+              try {
+                callback.call(context, null);
+              } catch (err) {
+                if (callback.length === 1) {
+                  callback(null);
+                } else {
+                  callback(null, { lastID, changes: result.rowCount });
+                }
               }
             }
-          }
-        })
-        .catch(err => {
-          if (callback) {
-            callback(err);
-          }
-        });
+          })
+          .catch(err => {
+            if (callback) {
+              callback(err);
+            }
+          });
+      } catch (err) {
+        if (callback) {
+          callback(err);
+        }
+      }
     },
     
     get: function(query, params, callback) {
+      if (!currentPool) {
+        if (callback) {
+          callback(new Error('Pool não inicializado'));
+        }
+        return;
+      }
+      
       const convertedQuery = convertPlaceholders(query);
       const convertedParams = params || [];
       
-      pool.query(convertedQuery, convertedParams)
-        .then(result => {
+      try {
+        const queryPromise = currentPool.query(convertedQuery, convertedParams);
+        if (!queryPromise || typeof queryPromise.then !== 'function') {
           if (callback) {
-            callback(null, result.rows[0] || null);
+            callback(new Error('pool.query não retornou uma Promise'));
           }
-        })
-        .catch(err => {
-          if (callback) {
-            callback(err);
-          }
-        });
+          return;
+        }
+        
+        queryPromise
+          .then(result => {
+            if (callback) {
+              callback(null, result.rows[0] || null);
+            }
+          })
+          .catch(err => {
+            if (callback) {
+              callback(err);
+            }
+          });
+      } catch (err) {
+        if (callback) {
+          callback(err);
+        }
+      }
     },
     
     all: function(query, params, callback) {
+      if (!currentPool) {
+        if (callback) {
+          callback(new Error('Pool não inicializado'));
+        }
+        return;
+      }
+      
       const convertedQuery = convertPlaceholders(query);
       const convertedParams = params || [];
       
-      pool.query(convertedQuery, convertedParams)
-        .then(result => {
+      try {
+        const queryPromise = currentPool.query(convertedQuery, convertedParams);
+        if (!queryPromise || typeof queryPromise.then !== 'function') {
           if (callback) {
-            callback(null, result.rows || []);
+            callback(new Error('pool.query não retornou uma Promise'));
           }
-        })
-        .catch(err => {
-          if (callback) {
-            callback(err);
-          }
-        });
+          return;
+        }
+        
+        queryPromise
+          .then(result => {
+            if (callback) {
+              callback(null, result.rows || []);
+            }
+          })
+          .catch(err => {
+            if (callback) {
+              callback(err);
+            }
+          });
+      } catch (err) {
+        if (callback) {
+          callback(err);
+        }
+      }
     },
     
     prepare: function(query) {
@@ -355,23 +421,44 @@ function getDatabase() {
       
       return {
         run: function(params, callback) {
-          pool.query(finalQuery, params || [])
-            .then(result => {
+          if (!currentPool) {
+            if (callback) {
+              callback(new Error('Pool não inicializado'));
+            }
+            return;
+          }
+          
+          try {
+            const queryPromise = currentPool.query(finalQuery, params || []);
+            if (!queryPromise || typeof queryPromise.then !== 'function') {
               if (callback) {
-                const lastID = result.rows[0]?.id || null;
-                const context = { lastID };
-                try {
-                  callback.call(context, null);
-                } catch (err) {
-                  callback(null);
+                callback(new Error('pool.query não retornou uma Promise'));
+              }
+              return;
+            }
+            
+            queryPromise
+              .then(result => {
+                if (callback) {
+                  const lastID = result.rows[0]?.id || null;
+                  const context = { lastID };
+                  try {
+                    callback.call(context, null);
+                  } catch (err) {
+                    callback(null);
+                  }
                 }
-              }
-            })
-            .catch(err => {
-              if (callback) {
-                callback(err);
-              }
-            });
+              })
+              .catch(err => {
+                if (callback) {
+                  callback(err);
+                }
+              });
+          } catch (err) {
+            if (callback) {
+              callback(err);
+            }
+          }
         },
         finalize: function(callback) {
           if (callback) {
@@ -389,10 +476,10 @@ function getDatabase() {
     
     query: function(query, params) {
       const convertedQuery = convertPlaceholders(query);
-      return pool.query(convertedQuery, params || []);
+      return currentPool.query(convertedQuery, params || []);
     },
     
-    pool: pool
+    pool: currentPool
   };
 }
 
