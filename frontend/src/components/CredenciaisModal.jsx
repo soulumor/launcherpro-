@@ -352,7 +352,7 @@ function CredenciaisModal({ jogo, onClose, conta }) {
         }
       }}
     >
-      <DialogContent
+      <DialogContent 
         className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden bg-gray-950 border-2 border-cyan-500/50 shadow-[0_0_50px_rgba(6,182,212,0.3)] p-0 flex flex-col"
         onInteractOutside={(e) => {
           // Bloquear fechamento ao clicar fora

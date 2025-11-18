@@ -13,6 +13,9 @@ function AdminScreen() {
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [mostrarUpload, setMostrarUpload] = useState(false);
+  const [arquivoSelecionado, setArquivoSelecionado] = useState(null);
+  const [uploadando, setUploadando] = useState(false);
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -130,6 +133,33 @@ function AdminScreen() {
     return 'text-green-400';
   };
 
+  const handleUploadArquivo = async () => {
+    if (!arquivoSelecionado) {
+      alert('Selecione um arquivo');
+      return;
+    }
+    
+    const formData = new FormData();
+    formData.append('arquivo', arquivoSelecionado);
+    
+    try {
+      setUploadando(true);
+      setError('');
+      // Não definir Content-Type manualmente - o axios define automaticamente com o boundary correto quando detecta FormData
+      const response = await api.post('/api/contas/upload', formData, {
+        timeout: 120000 // 2 minutos
+      });
+      
+      alert(`✅ ${response.data.mensagem}\n\n📊 Estatísticas:\n• Total processado: ${response.data.total}\n• Adicionadas: ${response.data.adicionadas}\n• Duplicadas: ${response.data.duplicadas}\n• Erros: ${response.data.erros}`);
+      setArquivoSelecionado(null);
+      setMostrarUpload(false);
+    } catch (error) {
+      setError('Erro ao fazer upload: ' + (error.response?.data?.error || error.message));
+    } finally {
+      setUploadando(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       {/* Scan line effect */}
@@ -186,8 +216,8 @@ function AdminScreen() {
           </div>
         )}
 
-        {/* Botão Novo Cliente */}
-        <div className="mb-6">
+        {/* Botões de Ação */}
+        <div className="mb-6 flex gap-3">
           <Button
             onClick={() => {
               setEditingUser(null);
@@ -205,6 +235,13 @@ function AdminScreen() {
           >
             <Plus className="w-4 h-4 mr-2" />
             Novo Cliente
+          </Button>
+          
+          <Button
+            onClick={() => setMostrarUpload(true)}
+            className="bg-green-600 hover:bg-green-700 border-2 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.5)] hover:shadow-[0_0_25px_rgba(34,197,94,0.8)] transition-all duration-300"
+          >
+            📁 Upload Contas
           </Button>
         </div>
 
@@ -304,6 +341,53 @@ function AdminScreen() {
                 </Button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Modal de Upload de Contas */}
+        {mostrarUpload && (
+          <div className="bg-gray-900 border-2 border-green-500 rounded-lg p-6 mb-6">
+            <h3 className="text-xl font-bold text-green-400 mb-4">
+              📁 Upload de Contas para Nuvem
+            </h3>
+            <p className="text-gray-300 mb-4">
+              Envie um arquivo com contas. Elas serão adicionadas na nuvem e distribuídas para <strong className="text-green-400">todos os clientes</strong> automaticamente.
+            </p>
+            <div className="bg-gray-800 p-4 rounded mb-4 text-sm text-gray-300">
+              <p className="font-bold text-green-400 mb-2">📋 Formatos aceitos:</p>
+              <p className="mb-1"><strong>JSON:</strong> [{'{'}jogo_id: 1, usuario: &quot;user1&quot;, senha: &quot;pass1&quot;{'}'}, ...]</p>
+              <p className="mb-1"><strong>CSV:</strong> jogo_id,usuario,senha (primeira linha = cabeçalho)</p>
+              <p><strong>TXT:</strong> jogo_id|usuario|senha (uma conta por linha)</p>
+            </div>
+            <input
+              type="file"
+              accept=".json,.csv,.txt"
+              onChange={(e) => setArquivoSelecionado(e.target.files[0])}
+              className="mb-4 block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700"
+              disabled={uploadando}
+            />
+            {arquivoSelecionado && (
+              <p className="text-green-400 mb-4">📄 Arquivo selecionado: <strong>{arquivoSelecionado.name}</strong></p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleUploadArquivo}
+                disabled={!arquivoSelecionado || uploadando}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {uploadando ? '⏳ Enviando para Nuvem...' : '☁️ Enviar para Nuvem'}
+              </Button>
+              <Button 
+                onClick={() => {
+                  setMostrarUpload(false);
+                  setArquivoSelecionado(null);
+                }} 
+                variant="ghost"
+                disabled={uploadando}
+              >
+                Cancelar
+              </Button>
+            </div>
           </div>
         )}
 

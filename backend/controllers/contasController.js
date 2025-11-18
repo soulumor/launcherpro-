@@ -517,3 +517,140 @@ exports.atualizarStatusContas = async (req, res) => {
   }
 };
 
+/**
+ * Processa upload de arquivo com contas e distribui para todos os clientes
+ * POST /api/contas/upload
+ * Body: FormData com arquivo (JSON, CSV ou TXT)
+ */
+exports.uploadContas = async (req, res) => {
+  const db = getDatabase();
+  
+  if (!req.file) {
+    return res.status(400).json({ error: 'Arquivo não fornecido' });
+  }
+  
+  try {
+    const arquivo = req.file.buffer.toString('utf8');
+    const extensao = req.file.originalname.split('.').pop().toLowerCase();
+    
+    let contas = [];
+    
+    // Processar JSON
+    if (extensao === 'json') {
+      const dados = JSON.parse(arquivo);
+      contas = Array.isArray(dados) ? dados : dados.contas || [];
+    }
+    // Processar CSV
+    else if (extensao === 'csv') {
+      const linhas = arquivo.split('\n').filter(l => l.trim());
+      if (linhas.length === 0) {
+        return res.status(400).json({ error: 'Arquivo CSV vazio' });
+      }
+      
+      const headers = linhas[0].split(',').map(h => h.trim().toLowerCase());
+      
+      for (let i = 1; i < linhas.length; i++) {
+        const valores = linhas[i].split(',').map(v => v.trim());
+        const conta = {};
+        headers.forEach((header, idx) => {
+          conta[header] = valores[idx];
+        });
+        
+        // Mapear campos comuns
+        const jogoId = conta.jogo_id || conta.jogoid || conta['jogo id'];
+        const usuario = conta.usuario || conta.user || conta.username;
+        const senha = conta.senha || conta.pass || conta.password;
+        
+        if (jogoId && usuario && senha) {
+          contas.push({ jogo_id: parseInt(jogoId), usuario, senha });
+        }
+      }
+    }
+    // Processar TXT (formato: jogo_id|usuario|senha)
+    else if (extensao === 'txt') {
+      const linhas = arquivo.split('\n').filter(l => l.trim());
+      linhas.forEach(linha => {
+        const partes = linha.split('|').map(p => p.trim());
+        if (partes.length >= 3) {
+          contas.push({
+            jogo_id: parseInt(partes[0]),
+            usuario: partes[1],
+            senha: partes[2]
+          });
+        }
+      });
+    } else {
+      return res.status(400).json({ error: 'Formato de arquivo não suportado. Use JSON, CSV ou TXT' });
+    }
+    
+    if (contas.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma conta válida encontrada no arquivo' });
+    }
+    
+    let adicionadas = 0;
+    let duplicadas = 0;
+    let erros = 0;
+    
+    // Adicionar cada conta
+    for (const conta of contas) {
+      try {
+        if (!conta.jogo_id || !conta.usuario || !conta.senha) {
+          erros++;
+          continue;
+        }
+        
+        // Verificar se já existe
+        const existe = await new Promise((resolve) => {
+          db.get(
+            'SELECT id FROM contas WHERE jogo_id = ? AND LOWER(usuario) = LOWER(?)',
+            [conta.jogo_id, conta.usuario],
+            (err, row) => resolve(!!row)
+          );
+        });
+        
+        if (existe) {
+          duplicadas++;
+          continue;
+        }
+        
+        // Adicionar conta (distribui para todos os clientes automaticamente)
+        await new Promise((resolve) => {
+          db.run(
+            'INSERT INTO contas (jogo_id, usuario, senha, status) VALUES (?, ?, ?, ?)',
+            [conta.jogo_id, conta.usuario, conta.senha, conta.status || 'disponivel'],
+            (err) => {
+              if (err) {
+                console.error('Erro ao adicionar conta:', err);
+                erros++;
+              } else {
+                adicionadas++;
+              }
+              resolve();
+            }
+          );
+        });
+      } catch (error) {
+        console.error('Erro ao processar conta:', error);
+        erros++;
+      }
+    }
+    
+    console.log(`✅ Upload concluído: ${adicionadas} adicionadas, ${duplicadas} duplicadas, ${erros} erros`);
+    
+    res.json({
+      sucesso: true,
+      total: contas.length,
+      adicionadas,
+      duplicadas,
+      erros,
+      mensagem: `${adicionadas} conta(s) adicionada(s) e distribuída(s) para todos os clientes! ${duplicadas > 0 ? `(${duplicadas} duplicada(s) ignorada(s))` : ''} ${erros > 0 ? `(${erros} erro(s))` : ''}`
+    });
+  } catch (error) {
+    console.error('Erro ao processar arquivo:', error);
+    res.status(500).json({ 
+      error: 'Erro ao processar arquivo',
+      detalhes: error.message 
+    });
+  }
+};
+

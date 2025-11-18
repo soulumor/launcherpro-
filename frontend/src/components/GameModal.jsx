@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
-import { buscarCredenciaisFrontend, buscarCredenciaisViaProxySimples, buscarCredenciaisViaServicoLocal, buscarCredenciaisViaProxyPublico } from '../services/pokopowScraper'
 import { X, RefreshCw, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog'
 import { Button } from './ui/button'
@@ -9,7 +8,6 @@ import { Progress } from './ui/progress'
 import TestadorContas from './TestadorContas'
 import AccountCard from './AccountCard'
 import CredenciaisModal from './CredenciaisModal'
-import ResultadoSincronizacaoModal from './ResultadoSincronizacaoModal'
 
 /**
  * Modal que exibe detalhes do jogo e contas disponíveis
@@ -22,10 +20,7 @@ function GameModal({ game, onClose, abasConfig }) {
   const [recarregarContas, setRecarregarContas] = useState(0)
   const [testandoConta, setTestandoConta] = useState(null)
   const [resultadoTeste, setResultadoTeste] = useState(null)
-  const [sincronizando, setSincronizando] = useState(false)
-  const [resultadoSincronizacao, setResultadoSincronizacao] = useState(null)
   const [credentialsModal, setCredentialsModal] = useState(null)
-  const [mostrarResultadoModal, setMostrarResultadoModal] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [imageLoaded, setImageLoaded] = useState(false)
 
@@ -54,165 +49,6 @@ function GameModal({ game, onClose, abasConfig }) {
 
   const handleContasAtualizadas = () => {
     setRecarregarContas(prev => prev + 1)
-  }
-
-  const sincronizarJogo = async () => {
-    if (!game?.id) return
-    
-    try {
-      setSincronizando(true)
-      setResultadoSincronizacao(null)
-      
-      // 🆕 CADEIA DE FALLBACKS: Tentar múltiplas estratégias
-      let contasEncontradas = null
-      // Construir URL se não existir
-      const gameUrl = game.url || `https://pokopow.com/${game.nome.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`
-      
-      console.log('🔄 [SYNC] Iniciando sincronização para:', game.nome);
-      console.log('🔄 [SYNC] URL do jogo:', gameUrl);
-      
-      if (gameUrl && gameUrl.includes('pokopow.com')) {
-        // Estratégia 1: Proxy simples local (rápido, sem Puppeteer) ⭐ NOVO
-        try {
-          console.log('⚡ [SYNC] Estratégia 1: Tentando proxy simples local (rápido)...')
-          contasEncontradas = await buscarCredenciaisViaProxySimples(gameUrl)
-          if (contasEncontradas && contasEncontradas.length > 0) {
-            console.log(`✅ [SYNC] Proxy simples encontrou ${contasEncontradas.length} conta(s)!`)
-          }
-        } catch (error) {
-          console.log('⚠️ [SYNC] Proxy simples não disponível ou falhou')
-        }
-        
-        // Estratégia 2: Serviço local (Puppeteer no PC do usuário)
-        if (!contasEncontradas || contasEncontradas.length === 0) {
-          try {
-            console.log('🖥️ [SYNC] Estratégia 2: Tentando serviço local (Puppeteer)...')
-            contasEncontradas = await buscarCredenciaisViaServicoLocal(gameUrl, game.id, game.nome)
-            if (contasEncontradas && contasEncontradas.length > 0) {
-              console.log(`✅ [SYNC] Serviço local encontrou ${contasEncontradas.length} conta(s)!`)
-            }
-          } catch (error) {
-            console.log('⚠️ [SYNC] Serviço local não disponível ou falhou')
-          }
-        }
-        
-        // Estratégia 3: Frontend direto (pode falhar por CORS)
-        if (!contasEncontradas || contasEncontradas.length === 0) {
-          try {
-            console.log('🌐 [SYNC] Estratégia 3: Tentando frontend direto...')
-            contasEncontradas = await buscarCredenciaisFrontend(gameUrl)
-            if (contasEncontradas && contasEncontradas.length > 0) {
-              console.log(`✅ [SYNC] Frontend direto encontrou ${contasEncontradas.length} conta(s)!`)
-            }
-          } catch (error) {
-            console.log('⚠️ [SYNC] Frontend direto falhou (CORS provavelmente)')
-          }
-        }
-        
-        // Estratégia 4: Proxy público (bypass CORS)
-        if (!contasEncontradas || contasEncontradas.length === 0) {
-          try {
-            console.log('🌐 [SYNC] Estratégia 4: Tentando proxy público...')
-            contasEncontradas = await buscarCredenciaisViaProxyPublico(gameUrl)
-            if (contasEncontradas && contasEncontradas.length > 0) {
-              console.log(`✅ [SYNC] Proxy público encontrou ${contasEncontradas.length} conta(s)!`)
-            }
-          } catch (error) {
-            console.log('⚠️ [SYNC] Proxy público falhou')
-          }
-        }
-        
-        // Se encontrou credenciais em qualquer estratégia, enviar para backend salvar
-        if (contasEncontradas && contasEncontradas.length > 0) {
-          console.log(`✅ [SYNC] Total: ${contasEncontradas.length} conta(s) encontrada(s), enviando para backend na nuvem salvar...`)
-          const response = await api.post(`/api/jogos/sincronizar/${game.id}`, {
-            credenciais: contasEncontradas,
-            usarCredenciaisFornecidas: true,
-            jogoNome: game.nome // 🆕 Enviar nome do jogo para criar automaticamente se não existir
-          }, {
-            timeout: 30000
-          })
-          
-          const resultadoFormatado = {
-            status: response.data.sucesso ? 'concluido' : 'erro',
-            mensagem: response.data.mensagem || response.data.error || `${contasEncontradas.length} conta(s) encontrada(s) e salva(s) com sucesso!`,
-            jogosAdicionados: 0,
-            contasAdicionadas: response.data.contasAdicionadas || contasEncontradas.length,
-            jogosAtualizados: 0,
-            totalJogos: 1,
-            jogosAdicionadosLista: [],
-            iniciado: new Date().toISOString(),
-            finalizado: response.data.timestamp || new Date().toISOString()
-          }
-          
-          setResultadoSincronizacao(resultadoFormatado)
-          setMostrarResultadoModal(true)
-          handleContasAtualizadas()
-          return // Sucesso, sair
-        }
-      }
-      
-      // 🔄 FALLBACK: Usar backend (código original)
-      console.log('🔄 [SYNC] Usando backend para sincronizar...')
-      const response = await api.post(`/api/jogos/sincronizar/${game.id}`, {}, {
-        timeout: 300000
-      })
-      
-      // Converter resposta para formato do modal
-      const resultadoFormatado = {
-        status: response.data.sucesso ? 'concluido' : 'erro',
-        mensagem: response.data.mensagem || response.data.error,
-        jogosAdicionados: 0, // Sincronização individual não adiciona jogos
-        contasAdicionadas: response.data.contasAdicionadas || 0,
-        jogosAtualizados: 0,
-        totalJogos: 1, // Apenas 1 jogo foi processado
-        jogosAdicionadosLista: [],
-        iniciado: new Date().toISOString(),
-        finalizado: response.data.timestamp || new Date().toISOString()
-      }
-      
-      setResultadoSincronizacao(resultadoFormatado)
-      setMostrarResultadoModal(true)
-      handleContasAtualizadas()
-      
-    } catch (error) {
-      console.error('Erro ao sincronizar jogo:', error)
-      
-      // 🆕 Melhorar mensagem de erro 403
-      let mensagemErro = error.response?.data?.error || 'Erro ao sincronizar jogo'
-      let detalhesErro = error.response?.data?.detalhes || error.message
-      
-      if (error.response?.status === 403 || mensagemErro.includes('403') || detalhesErro.includes('403')) {
-        mensagemErro = 'Site bloqueando requisições (403)'
-        detalhesErro = 'O site pokopow.com está bloqueando o servidor. O frontend tentou primeiro, mas CORS bloqueou. O backend também foi bloqueado. Tente novamente mais tarde ou adicione contas manualmente.'
-      } else if (error.response?.status === 404) {
-        // Verificar se é erro do backend (jogo não existe no banco) ou do site
-        if (mensagemErro.includes('Jogo não encontrado') || mensagemErro.includes('não encontrado')) {
-          mensagemErro = 'Jogo não encontrado no banco de dados'
-          detalhesErro = `O jogo "${game.nome}" (ID: ${game.id}) não existe no banco de dados do backend na nuvem. Isso pode acontecer se o jogo foi adicionado apenas localmente. Tente recarregar a página ou adicione contas manualmente.`
-        } else {
-          mensagemErro = 'Jogo não encontrado no site'
-          detalhesErro = `O jogo "${game.nome}" não foi encontrado no site pokopow.com. Isso pode acontecer se o jogo não existe no site ou se o nome está diferente. Você pode adicionar contas manualmente.`
-        }
-      }
-      
-      const resultadoErro = {
-        status: 'erro',
-        mensagem: mensagemErro,
-        detalhes: detalhesErro,
-        jogosAdicionados: 0,
-        contasAdicionadas: 0,
-        jogosAtualizados: 0,
-        totalJogos: 1,
-        jogosAdicionadosLista: [],
-        iniciado: new Date().toISOString(),
-        finalizado: new Date().toISOString()
-      }
-      setResultadoSincronizacao(resultadoErro)
-      setMostrarResultadoModal(true)
-    } finally {
-      setSincronizando(false)
-    }
   }
 
   const retestarConta = async (contaId) => {
@@ -353,52 +189,11 @@ function GameModal({ game, onClose, abasConfig }) {
             </div>
             
             <div className="absolute bottom-6 left-6 right-6">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="text-cyan-400 [text-shadow:0_0_20px_rgba(6,182,212,0.8)] text-2xl font-bold">
-                  {game.nome}
-                </h2>
-                <Button
-                  onClick={sincronizarJogo}
-                  disabled={sincronizando}
-                  className="px-3 py-1.5 text-sm bg-black/80 hover:bg-black border-2 border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.5)] hover:shadow-[0_0_25px_rgba(6,182,212,0.8)] transition-all duration-300 group"
-                >
-                  {sincronizando ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      <span className="text-[rgb(0,181,215)] group-hover:text-cyan-400 transition-colors font-bold">
-                        Sincronizando...
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-[rgb(0,181,215)] group-hover:text-cyan-400 transition-colors font-bold">
-                      Sincronizar
-                    </span>
-                  )}
-                </Button>
-              </div>
+              <h2 className="text-cyan-400 [text-shadow:0_0_20px_rgba(6,182,212,0.8)] text-2xl font-bold">
+                {game.nome}
+              </h2>
             </div>
           </div>
-
-          {/* Resultado da Sincronização */}
-          {resultadoSincronizacao && (
-            <div className={`mx-6 mt-4 p-3 rounded-lg border ${
-              resultadoSincronizacao.sucesso
-                ? 'bg-green-900/30 border-green-600 text-green-300'
-                : 'bg-red-900/30 border-red-600 text-red-300'
-            }`}>
-              <div className="flex items-start gap-2">
-                <span className="text-lg">{resultadoSincronizacao.sucesso ? '✅' : '❌'}</span>
-                <div className="flex-1">
-                  <p className="font-medium">{resultadoSincronizacao.mensagem || resultadoSincronizacao.error}</p>
-                  {resultadoSincronizacao.contasAdicionadas !== undefined && (
-                    <p className="text-sm mt-1">
-                      ➕ {resultadoSincronizacao.contasAdicionadas} nova(s) conta(s) adicionada(s)
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Content */}
           <div className="p-6 space-y-6">
@@ -485,17 +280,6 @@ function GameModal({ game, onClose, abasConfig }) {
           conta={{
             usuario: credentialsModal.account.usuario || credentialsModal.account.username,
             senha: credentialsModal.account.senha || credentialsModal.account.password
-          }}
-        />
-      )}
-
-      {/* Modal de Resultados da Sincronização */}
-      {mostrarResultadoModal && resultadoSincronizacao && (
-        <ResultadoSincronizacaoModal
-          resultado={resultadoSincronizacao}
-          onClose={() => {
-            setMostrarResultadoModal(false)
-            setResultadoSincronizacao(null)
           }}
         />
       )}

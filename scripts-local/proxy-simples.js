@@ -4,7 +4,11 @@
  */
 
 const http = require('http');
-const https = require('https');
+const    🌐 Acessando: https://pokopow.com/wwe-2k22
+🎮 Buscando contas para: Youtubers Life 2 (ID: 1359)
+   🛡️ [CLOUDFLARE] Site bloqueado pelo Cloudflare (proteção anti-bot)
+   ⚠️  O site detectou automação e está bloqueando requisições
+   💡 Puppeteer pode precisar de mais tempohttps = require('https');
 const { URL } = require('url');
 const cheerio = require('cheerio');
 const zlib = require('zlib');
