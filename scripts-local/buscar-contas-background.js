@@ -81,7 +81,12 @@ class BackgroundScraper {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-blink-features=AutomationControlled'
+          '--disable-blink-features=AutomationControlled',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu'
         ]
       });
       
@@ -123,21 +128,68 @@ class BackgroundScraper {
       // Headers realistas
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Remover sinais de automação
+      // Remover sinais de automação (melhorado)
       await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+        window.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'permissions', {
+          get: () => ({
+            query: () => Promise.resolve({ state: 'granted' })
+          })
+        });
+      });
+      
+      // Adicionar headers extras
+      await page.setExtraHTTPHeaders({
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
       });
       
       console.log(`   🌐 Acessando: ${url}`);
       
-      // Navegar até a página e aguardar JavaScript carregar
-      await page.goto(url, {
-        waitUntil: 'networkidle2',
-        timeout: 45000 // Aumentar timeout
-      });
-      
-      // Aguardar mais tempo para conteúdo dinâmico carregar
-      await this.sleep(5000);
+      // Navegar até a página com estratégia mais paciente
+      try {
+        await page.goto(url, {
+          waitUntil: 'domcontentloaded', // Mais rápido que networkidle2
+          timeout: 60000 // 60 segundos
+        });
+        
+        // Aguardar Cloudflare challenge se existir
+        console.log(`   ⏳ Aguardando página carregar completamente...`);
+        await this.sleep(8000); // Aguardar mais tempo para Cloudflare
+        
+        // Verificar se há desafio do Cloudflare
+        const cloudflareCheck = await page.evaluate(() => {
+          const bodyText = document.body?.innerText?.toLowerCase() || '';
+          return bodyText.includes('checking your browser') || 
+                 bodyText.includes('cloudflare') ||
+                 bodyText.includes('ray id');
+        });
+        
+        if (cloudflareCheck) {
+          console.log(`   🛡️ Detectado desafio do Cloudflare, aguardando...`);
+          await this.sleep(10000); // Aguardar desafio passar
+          
+          // Tentar recarregar após desafio
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+          await this.sleep(5000);
+        }
+      } catch (error) {
+        if (error.message.includes('timeout')) {
+          console.log(`   ⏰ Timeout ao carregar página, tentando continuar...`);
+        } else {
+          throw error;
+        }
+      }
       
       // Tentar esperar por elementos que podem conter credenciais
       try {
