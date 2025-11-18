@@ -28,10 +28,16 @@ exports.listarBiblioteca = (req, res) => {
     ORDER BY data_adicao DESC
   `;
   
-  db.all(query, (err, rows) => {
+  db.all(query, [], (err, rows) => {
     if (err) {
       console.error('Erro ao buscar biblioteca:', err);
       return res.status(500).json({ error: 'Erro ao buscar biblioteca' });
+    }
+    
+    // Garantir que rows é um array
+    if (!Array.isArray(rows)) {
+      console.error('Erro: rows não é um array:', typeof rows, rows);
+      return res.status(500).json({ error: 'Erro ao processar dados da biblioteca' });
     }
     
     console.log(`📚 Biblioteca: ${rows.length} jogo(s) único(s) encontrado(s)`);
@@ -71,6 +77,12 @@ exports.listarContasJogoBiblioteca = (req, res) => {
     if (err) {
       console.error('❌ Erro ao buscar contas do jogo na biblioteca:', err);
       return res.status(500).json({ error: 'Erro ao buscar contas' });
+    }
+    
+    // Garantir que rows é um array
+    if (!Array.isArray(rows)) {
+      console.error('Erro: rows não é um array:', typeof rows, rows);
+      return res.status(500).json({ error: 'Erro ao processar dados das contas' });
     }
     
     console.log(`✅ Encontradas ${rows.length} conta(s) válida(s) para o jogo ${jogoId}`);
