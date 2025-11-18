@@ -197,7 +197,10 @@ export async function buscarCredenciaisViaProxySimples(url) {
     }
     
     // Melhorar mensagem de erro
-    if (data.erro) {
+    if (data.bloqueado || data.erro?.includes('Cloudflare')) {
+      console.log(`🛡️ [PROXY-SIMPLES] Site bloqueado pelo Cloudflare (proteção anti-bot)`);
+      console.log(`   ⚠️  O site detectou automação e está bloqueando requisições`);
+    } else if (data.erro) {
       console.log(`⚠️ [PROXY-SIMPLES] Proxy simples retornou erro: ${data.erro}`);
     } else if (data.encontradas === 0) {
       console.log(`⚠️ [PROXY-SIMPLES] Proxy simples não encontrou credenciais na página`);

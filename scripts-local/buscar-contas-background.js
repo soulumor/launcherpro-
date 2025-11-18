@@ -173,6 +173,22 @@ class BackgroundScraper {
         return document.body.innerText || document.body.textContent || '';
       });
       
+      // Verificar se é página de erro do Cloudflare
+      const htmlLower = html.toLowerCase();
+      const textoLower = textoVisivel.toLowerCase();
+      if (htmlLower.includes('cloudflare') || 
+          htmlLower.includes('error code 500') || 
+          htmlLower.includes('internal server error') ||
+          htmlLower.includes('checking your browser') ||
+          htmlLower.includes('ray id') ||
+          textoLower.includes('cloudflare') ||
+          textoLower.includes('error code 500')) {
+        console.log(`   🛡️ [CLOUDFLARE] Site bloqueado pelo Cloudflare (proteção anti-bot)`);
+        console.log(`   ⚠️  O site detectou automação e está bloqueando requisições`);
+        console.log(`   💡 Puppeteer pode precisar de mais tempo ou configurações especiais`);
+        return [];
+      }
+      
       // Combinar HTML e texto visível para extração
       const textoCompleto = html + '\n' + textoVisivel;
       
