@@ -33,10 +33,16 @@ exports.listarJogos = (req, res) => {
       LEFT JOIN contas c ON j.id = c.jogo_id
       GROUP BY j.id, j.nome, j.descricao, j.preco, j.capa
       ORDER BY j.id DESC
-    `, (err, rows) => {
+    `, [], (err, rows) => {
       if (err) {
         console.error('Erro ao buscar jogos com contas:', err);
         return res.status(500).json({ error: 'Erro ao buscar jogos' });
+      }
+      
+      // Garantir que rows é um array
+      if (!Array.isArray(rows)) {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
       }
       
       // Formatar resposta
@@ -55,10 +61,16 @@ exports.listarJogos = (req, res) => {
     });
   } else {
     // Buscar apenas jogos (padrão - mais rápido)
-    db.all('SELECT * FROM jogos ORDER BY id DESC', (err, rows) => {
+    db.all('SELECT * FROM jogos ORDER BY id DESC', [], (err, rows) => {
       if (err) {
         console.error('Erro ao buscar jogos:', err);
         return res.status(500).json({ error: 'Erro ao buscar jogos' });
+      }
+      
+      // Garantir que rows é um array
+      if (!Array.isArray(rows)) {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
       }
       
       res.json(rows);
@@ -115,6 +127,12 @@ exports.buscarJogosNoBanco = (req, res) => {
       if (err) {
         console.error('Erro ao buscar jogos no banco:', err);
         return res.status(500).json({ error: 'Erro ao buscar jogos no banco de dados' });
+      }
+      
+      // Garantir que rows é um array
+      if (!Array.isArray(rows)) {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
       }
       
       console.log(`✅ Encontrados ${rows.length} jogos no banco de dados`);
@@ -245,7 +263,10 @@ exports.sincronizarJogo = async (req, res) => {
             const contasExistentes = await new Promise((resolve, reject) => {
               db.all('SELECT usuario FROM contas WHERE jogo_id = ?', [novoJogo.id], (err, rows) => {
                 if (err) reject(err);
-                else resolve((rows || []).map(r => r.usuario.toLowerCase()));
+                else {
+                  const rowsArray = Array.isArray(rows) ? rows : [];
+                  resolve(rowsArray.map(r => r.usuario.toLowerCase()));
+                }
               });
             });
             
@@ -345,7 +366,10 @@ exports.sincronizarJogo = async (req, res) => {
           const contasExistentes = await new Promise((resolve, reject) => {
             db.all('SELECT usuario FROM contas WHERE jogo_id = ?', [jogoId], (err, rows) => {
               if (err) reject(err);
-              else resolve((rows || []).map(r => r.usuario.toLowerCase()));
+              else {
+                const rowsArray = Array.isArray(rows) ? rows : [];
+                resolve(rowsArray.map(r => r.usuario.toLowerCase()));
+              }
             });
           });
           
@@ -523,7 +547,10 @@ exports.sincronizarJogo = async (req, res) => {
         const contasExistentes = await new Promise((resolve, reject) => {
           db.all('SELECT usuario FROM contas WHERE jogo_id = ?', [jogoId], (err, rows) => {
             if (err) reject(err);
-            else resolve((rows || []).map(r => r.usuario.toLowerCase()));
+            else {
+              const rowsArray = Array.isArray(rows) ? rows : [];
+              resolve(rowsArray.map(r => r.usuario.toLowerCase()));
+            }
           });
         });
         
