@@ -12,12 +12,15 @@ JWT_SECRET=88842af29e7a187c6d141713a8d582899ce0ff5b71785317fb050dfb4cf0269e
 
 Quando criar o Web Service no Render, adicione estas variáveis:
 
-| Key | Value |
-|-----|-------|
-| `JWT_SECRET` | `88842af29e7a187c6d141713a8d582899ce0ff5b71785317fb050dfb4cf0269e` |
-| `PORT` | `3001` |
-| `NODE_ENV` | `production` |
-| `CORS_ORIGIN` | `*` |
+| Key | Value | Descrição |
+|-----|-------|-----------|
+| `JWT_SECRET` | `88842af29e7a187c6d141713a8d582899ce0ff5b71785317fb050dfb4cf0269e` | Chave secreta JWT (obrigatório) |
+| `PORT` | `3001` | Porta do servidor |
+| `NODE_ENV` | `production` | Ambiente Node.js |
+| `CORS_ORIGIN` | `*` | CORS permitido |
+| `DISABLE_RATE_LIMITER` | `true` | (Opcional) Desabilita rate limiter para testes |
+
+**Nota:** `DISABLE_RATE_LIMITER` é opcional. Use apenas para desenvolvimento/testes. Em produção, mantenha desabilitado (não defina a variável) para manter segurança.
 
 ## 🔧 Configurações do Render.com
 
@@ -31,7 +34,7 @@ Quando criar o Web Service no Render, adicione estas variáveis:
 
 **Root Directory**: `backend` ⚠️ **MUITO IMPORTANTE**
 
-**Build Command**: (deixe vazio, Render detecta automaticamente)
+**Build Command**: `npm install` (ou deixe vazio - Render detecta automaticamente)
 
 **Start Command**: `npm start`
 

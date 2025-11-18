@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { getDatabase } = require('../database/database');
+const { syncUsuarioToCloud, syncDeleteUsuarioToCloud } = require('../services/syncService');
 
 /**
  * Lista todos os usuários
@@ -73,20 +74,35 @@ exports.criarUsuario = async (req, res) => {
     db.run(
       'INSERT INTO usuarios (nome, email, senha, tipo, dias_mensalidade, data_vencimento, ultimo_token) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [nome, email, senhaHash, tipo, dias_mensalidade, dataVencimento.toISOString(), null],
-      function(err) {
+      async function(err) {
         if (err) {
           console.error('Erro ao criar usuário:', err);
           return res.status(500).json({ error: 'Erro ao criar usuário' });
         }
 
-        res.status(201).json({
+        const usuarioCriado = {
           id: this.lastID,
           nome,
           email,
           tipo,
           dias_mensalidade,
-          data_vencimento: dataVencimento.toISOString(),
+          data_vencimento: dataVencimento.toISOString()
+        };
+
+        // Enviar resposta imediatamente
+        res.status(201).json({
+          ...usuarioCriado,
           diasRestantes: dias_mensalidade
+        });
+
+        // Sincronizar com a nuvem em background (fire-and-forget)
+        setImmediate(async () => {
+          try {
+            await syncUsuarioToCloud(usuarioCriado, 'create');
+          } catch (syncErr) {
+            // Erro de sincronização não deve afetar a resposta já enviada
+            console.error('Erro ao sincronizar usuário criado:', syncErr);
+          }
         });
       }
     );
@@ -189,9 +205,20 @@ exports.editarUsuario = (req, res) => {
                 if (diasRestantes < 0) diasRestantes = 0;
               }
 
+              // Enviar resposta imediatamente
               res.json({
                 ...usuarioAtualizado,
                 diasRestantes
+              });
+
+              // Sincronizar com a nuvem em background (fire-and-forget)
+              setImmediate(async () => {
+                try {
+                  await syncUsuarioToCloud(usuarioAtualizado, 'update');
+                } catch (syncErr) {
+                  // Erro de sincronização não deve afetar a resposta já enviada
+                  console.error('Erro ao sincronizar usuário atualizado:', syncErr);
+                }
               });
             }
           );
@@ -210,18 +237,43 @@ exports.desativarUsuario = (req, res) => {
 
   const db = getDatabase();
 
-  // Deletar usuário permanentemente do banco de dados
-  db.run('DELETE FROM usuarios WHERE id = ?', [id], function(err) {
+  // Buscar email do usuário antes de deletar (para sincronização)
+  db.get('SELECT email FROM usuarios WHERE id = ?', [id], (err, usuario) => {
     if (err) {
-      console.error('Erro ao deletar usuário:', err);
-      return res.status(500).json({ error: 'Erro ao deletar usuário' });
+      console.error('Erro ao buscar usuário:', err);
+      return res.status(500).json({ error: 'Erro interno do servidor' });
     }
 
-    if (this.changes === 0) {
+    if (!usuario) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    res.json({ message: 'Usuário deletado permanentemente com sucesso' });
+    const emailUsuario = usuario.email;
+
+    // Deletar usuário permanentemente do banco de dados
+    db.run('DELETE FROM usuarios WHERE id = ?', [id], function(err) {
+      if (err) {
+        console.error('Erro ao deletar usuário:', err);
+        return res.status(500).json({ error: 'Erro ao deletar usuário' });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+
+      // Enviar resposta imediatamente
+      res.json({ message: 'Usuário deletado permanentemente com sucesso' });
+
+      // Sincronizar com a nuvem em background (fire-and-forget)
+      setImmediate(async () => {
+        try {
+          await syncDeleteUsuarioToCloud(emailUsuario);
+        } catch (syncErr) {
+          // Erro de sincronização não deve afetar a resposta já enviada
+          console.error('Erro ao sincronizar deleção de usuário:', syncErr);
+        }
+      });
+    });
   });
 };
 

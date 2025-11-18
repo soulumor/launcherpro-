@@ -1,5 +1,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const axiosCookieJar = require('axios-cookiejar-support').default;
+const tough = require('tough-cookie');
 
 /**
  * Serviço de scraper para pokopow.com
@@ -9,43 +11,213 @@ const cheerio = require('cheerio');
 class PokopowScraper {
   constructor() {
     this.baseUrl = 'https://pokopow.com';
-    this.delay = 2000; // Delay entre requisições (2 segundos) - menos agressivo
+    this.delay = 3000; // Delay base entre requisições (3 segundos) - menos agressivo
+    // Avisar sobre possível bloqueio
+    this.blockedWarningShown = false;
+    
+    // Configurar cookie jar para gerenciar cookies automaticamente
+    this.cookieJar = new tough.CookieJar();
+    this.axiosInstance = axiosCookieJar(axios.create({ 
+      jar: this.cookieJar,
+      withCredentials: true 
+    }));
+    this.sessaoInicializada = false;
+  }
+
+  /**
+   * Gera um User-Agent aleatório e realista
+   */
+  getRandomUserAgent() {
+    const userAgents = [
+      // Chrome Windows - versões recentes
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+      // Chrome Mac
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      // Firefox Windows
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+      // Edge Windows
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0'
+    ];
+    return userAgents[Math.floor(Math.random() * userAgents.length)];
+  }
+
+  /**
+   * Inicializa sessão visitando página inicial para obter cookies
+   */
+  async inicializarSessao() {
+    if (this.sessaoInicializada) {
+      return; // Sessão já inicializada
+    }
+    
+    try {
+      console.log('🍪 Inicializando sessão (obtendo cookies)...');
+      const userAgent = this.getRandomUserAgent();
+      
+      const response = await this.axiosInstance.get(this.baseUrl, {
+        headers: {
+          'User-Agent': userAgent,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Cache-Control': 'max-age=0'
+        },
+        timeout: 30000,
+        validateStatus: function (status) {
+          // Rejeitar 403 explicitamente
+          if (status === 403) {
+            return false;
+          }
+          return status >= 200 && status < 400;
+        }
+      });
+      
+      // Verificar se recebeu 403 mesmo assim
+      if (response.status === 403) {
+        throw new Error('Request failed with status code 403');
+      }
+      
+      this.sessaoInicializada = true;
+      console.log('✅ Sessão inicializada com cookies obtidos (Status:', response.status + ')');
+      
+      // Pequeno delay após inicializar sessão
+      await this.sleep(2000);
+    } catch (error) {
+      const errorMessage = (error.message || '').toString();
+      const statusCode = error.response?.status || error.response?.statusCode;
+      const is403 = statusCode === 403 || 
+                   errorMessage.includes('403') || 
+                   errorMessage.includes('status code 403') ||
+                   errorMessage.toLowerCase().includes('forbidden');
+      
+      if (is403) {
+        console.error('🚫 Erro 403 ao inicializar sessão (site bloqueando página inicial também)');
+        console.error('⚠️  O site está bloqueando até a página inicial - proteção muito avançada');
+        console.error('💡 Continuando sem cookies - provavelmente não funcionará');
+      } else {
+        console.error('⚠️  Erro ao inicializar sessão (continuando mesmo assim):', error.message);
+      }
+      // Marcar como inicializada mesmo com erro para não tentar novamente
+      this.sessaoInicializada = true;
+    }
   }
 
   /**
    * Faz uma requisição HTTP e retorna o HTML
+   * Melhorado para contornar bloqueios 403 com cookies
    */
   async fetchPage(url, tentativas = 3) {
+    // Inicializar sessão na primeira requisição se ainda não foi inicializada
+    if (!this.sessaoInicializada) {
+      await this.inicializarSessao();
+    }
+    
     for (let i = 0; i < tentativas; i++) {
       try {
         console.log(`   📡 Tentativa ${i + 1}/${tentativas}: ${url}`);
         
-        const response = await axios.get(url, {
+        // Gerar headers mais realistas para cada tentativa
+        const userAgent = this.getRandomUserAgent();
+        // Referer: primeira tentativa vem do Google, próximas do próprio site (simula navegação)
+        const referer = i === 0 ? 'https://www.google.com/' : this.baseUrl;
+        
+        const response = await this.axiosInstance.get(url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-            'Cache-Control': 'no-cache'
+            'User-Agent': userAgent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': i === 0 ? 'none' : 'same-origin',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'Referer': referer
           },
-          timeout: 30000 // 30 segundos - muito mais tempo
+          timeout: 30000, // 30 segundos
+          maxRedirects: 5,
+          validateStatus: function (status) {
+            // Rejeitar 403 explicitamente, aceitar apenas 200-308 (redirecionamentos)
+            if (status === 403) {
+              return false; // Fazer axios lançar erro para 403
+            }
+            return status >= 200 && status < 400;
+          }
         });
         
-        console.log(`   ✅ Sucesso na tentativa ${i + 1}`);
+        // Verificar se recebeu 403 mesmo assim
+        if (response.status === 403) {
+          const error403 = new Error('Request failed with status code 403');
+          error403.response = { status: 403 };
+          throw error403;
+        }
+        
+        console.log(`   ✅ Sucesso na tentativa ${i + 1} (Status: ${response.status})`);
         return cheerio.load(response.data);
         
       } catch (error) {
         const isLastTry = i === tentativas - 1;
         
-        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        // Detectar 403 de múltiplas formas - PRIORITÁRIO verificar 403 primeiro
+        const errorMessage = (error.message || '').toString();
+        const statusCode = error.response?.status || error.response?.statusCode || error.statusCode;
+        
+        // Debug: verificar o que está vindo no erro
+        if (errorMessage.includes('403') || errorMessage.includes('status code 403')) {
+          console.log('DEBUG 403 detectado:', { statusCode, errorMessage, hasResponse: !!error.response, responseStatus: error.response?.status, errorType: typeof error });
+        }
+        
+        // Verificar 403 de todas as formas possíveis
+        const is403 = statusCode === 403 || 
+                     statusCode === '403' ||
+                     errorMessage.includes('403') || 
+                     errorMessage.includes('status code 403') ||
+                     errorMessage.toLowerCase().includes('forbidden') ||
+                     (error.response && (error.response.status === 403 || error.response.statusCode === 403)) ||
+                     (error.code === '403') ||
+                     (String(error).includes('403'));
+        
+        // Priorizar detecção de 403 sobre timeout
+        if (is403) {
+          console.error(`   🚫 Erro 403 (Bloqueado) na tentativa ${i + 1}/${tentativas} para ${url}`);
+          if (!isLastTry) {
+            // Delay muito maior em caso de 403 - o site está bloqueando
+            const delay403 = 10000 + (i * 5000); // 10s, 15s, 20s...
+            console.log(`   ⏳ Site bloqueando requisições. Aguardando ${delay403/1000} segundos antes da próxima tentativa...`);
+            console.log(`   💡 Tentando com User-Agent diferente...`);
+            await this.sleep(delay403);
+          } else {
+            console.error(`   ⚠️  Não foi possível carregar a página de busca`);
+            console.error(`   💡 O site pode estar bloqueando todas as requisições. Tente novamente mais tarde.`);
+          }
+        } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
           console.error(`   ⏰ Timeout na tentativa ${i + 1}/${tentativas} para ${url}`);
           if (!isLastTry) {
-            console.log(`   🔄 Aguardando 3 segundos antes da próxima tentativa...`);
-            await this.sleep(3000);
+            // Delay maior em caso de timeout
+            const delayTimeout = 5000 + (i * 2000); // 5s, 7s, 9s...
+            console.log(`   🔄 Aguardando ${delayTimeout/1000} segundos antes da próxima tentativa...`);
+            await this.sleep(delayTimeout);
           }
         } else {
           console.error(`   ❌ Erro na tentativa ${i + 1}/${tentativas} para ${url}:`, error.message);
           if (!isLastTry) {
-            await this.sleep(2000);
+            // Delay aleatório entre 3-7 segundos
+            const delayRandom = 3000 + Math.random() * 4000;
+            await this.sleep(delayRandom);
           }
         }
         
@@ -102,9 +274,10 @@ class PokopowScraper {
       jogosCategoria.forEach(jogo => todosJogos.add(jogo.url));
       console.log(`      ✅ ${jogosCategoria.length} jogos encontrados nesta categoria`);
       
-      // Delay entre categorias (menos agressivo)
+      // Delay entre categorias (aleatório entre 4-8 segundos)
       if (categoriaIndex < categoriasEncontradas.size) {
-        await this.sleep(this.delay); // 2 segundos entre categorias
+        const delayRandom = 4000 + Math.random() * 4000;
+        await this.sleep(delayRandom);
       }
     }
     
@@ -140,9 +313,10 @@ class PokopowScraper {
         });
       }
       
-      // Delay a cada 10 jogos (menos agressivo)
+      // Delay a cada 10 jogos (aleatório entre 3-7 segundos)
       if ((i + 1) % 10 === 0) {
-        await this.sleep(this.delay); // 2 segundos a cada 10 jogos
+        const delayRandom = this.delay + Math.random() * 4000;
+        await this.sleep(delayRandom);
       }
     }
     
@@ -279,8 +453,9 @@ class PokopowScraper {
         }
       }
       
-      // Delay entre páginas (menos agressivo)
-      await this.sleep(this.delay);
+      // Delay entre páginas (aleatório entre 3-7 segundos para parecer mais humano)
+      const delayRandom = this.delay + Math.random() * 4000;
+      await this.sleep(delayRandom);
     }
     
     return todosJogos;
@@ -344,6 +519,11 @@ class PokopowScraper {
    * Busca jogos por termo (método melhorado)
    */
   async buscarJogosPorTermo(termo) {
+    // Garantir que sessão está inicializada antes de buscar
+    if (!this.sessaoInicializada) {
+      await this.inicializarSessao();
+    }
+    
     const jogos = [];
     const urlsVistas = new Set();
     
@@ -489,6 +669,11 @@ class PokopowScraper {
    * Extrai credenciais de uma página de jogo
    */
   async extrairCredenciais(url) {
+    // Garantir que sessão está inicializada
+    if (!this.sessaoInicializada) {
+      await this.inicializarSessao();
+    }
+    
     const $ = await this.fetchPage(url);
     if (!$) return [];
     
@@ -1035,9 +1220,10 @@ class PokopowScraper {
         console.log(`   ⚠️  Nenhuma credencial encontrada`);
       }
       
-      // Delay entre requisições
+      // Delay entre requisições (aleatório entre 3-7 segundos)
       if (i < jogos.length - 1) {
-        await this.sleep(this.delay);
+        const delayRandom = this.delay + Math.random() * 4000;
+        await this.sleep(delayRandom);
       }
     }
     

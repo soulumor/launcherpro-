@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { buscarCredenciaisFrontend, buscarCredenciaisViaProxySimples, buscarCredenciaisViaServicoLocal, buscarCredenciaisViaProxyPublico } from '../services/pokopowScraper'
 import { X, RefreshCw, Loader2 } from 'lucide-react'
-import { Dialog, DialogContent } from './ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog'
 import { Button } from './ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Progress } from './ui/progress'
@@ -62,6 +63,97 @@ function GameModal({ game, onClose, abasConfig }) {
       setSincronizando(true)
       setResultadoSincronizacao(null)
       
+      // 🆕 CADEIA DE FALLBACKS: Tentar múltiplas estratégias
+      let contasEncontradas = null
+      // Construir URL se não existir
+      const gameUrl = game.url || `https://pokopow.com/${game.nome.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`
+      
+      console.log('🔄 [SYNC] Iniciando sincronização para:', game.nome);
+      console.log('🔄 [SYNC] URL do jogo:', gameUrl);
+      
+      if (gameUrl && gameUrl.includes('pokopow.com')) {
+        // Estratégia 1: Proxy simples local (rápido, sem Puppeteer) ⭐ NOVO
+        try {
+          console.log('⚡ [SYNC] Estratégia 1: Tentando proxy simples local (rápido)...')
+          contasEncontradas = await buscarCredenciaisViaProxySimples(gameUrl)
+          if (contasEncontradas && contasEncontradas.length > 0) {
+            console.log(`✅ [SYNC] Proxy simples encontrou ${contasEncontradas.length} conta(s)!`)
+          }
+        } catch (error) {
+          console.log('⚠️ [SYNC] Proxy simples não disponível ou falhou')
+        }
+        
+        // Estratégia 2: Serviço local (Puppeteer no PC do usuário)
+        if (!contasEncontradas || contasEncontradas.length === 0) {
+          try {
+            console.log('🖥️ [SYNC] Estratégia 2: Tentando serviço local (Puppeteer)...')
+            contasEncontradas = await buscarCredenciaisViaServicoLocal(gameUrl, game.id, game.nome)
+            if (contasEncontradas && contasEncontradas.length > 0) {
+              console.log(`✅ [SYNC] Serviço local encontrou ${contasEncontradas.length} conta(s)!`)
+            }
+          } catch (error) {
+            console.log('⚠️ [SYNC] Serviço local não disponível ou falhou')
+          }
+        }
+        
+        // Estratégia 3: Frontend direto (pode falhar por CORS)
+        if (!contasEncontradas || contasEncontradas.length === 0) {
+          try {
+            console.log('🌐 [SYNC] Estratégia 3: Tentando frontend direto...')
+            contasEncontradas = await buscarCredenciaisFrontend(gameUrl)
+            if (contasEncontradas && contasEncontradas.length > 0) {
+              console.log(`✅ [SYNC] Frontend direto encontrou ${contasEncontradas.length} conta(s)!`)
+            }
+          } catch (error) {
+            console.log('⚠️ [SYNC] Frontend direto falhou (CORS provavelmente)')
+          }
+        }
+        
+        // Estratégia 4: Proxy público (bypass CORS)
+        if (!contasEncontradas || contasEncontradas.length === 0) {
+          try {
+            console.log('🌐 [SYNC] Estratégia 4: Tentando proxy público...')
+            contasEncontradas = await buscarCredenciaisViaProxyPublico(gameUrl)
+            if (contasEncontradas && contasEncontradas.length > 0) {
+              console.log(`✅ [SYNC] Proxy público encontrou ${contasEncontradas.length} conta(s)!`)
+            }
+          } catch (error) {
+            console.log('⚠️ [SYNC] Proxy público falhou')
+          }
+        }
+        
+        // Se encontrou credenciais em qualquer estratégia, enviar para backend salvar
+        if (contasEncontradas && contasEncontradas.length > 0) {
+          console.log(`✅ [SYNC] Total: ${contasEncontradas.length} conta(s) encontrada(s), enviando para backend na nuvem salvar...`)
+          const response = await api.post(`/api/jogos/sincronizar/${game.id}`, {
+            credenciais: contasEncontradas,
+            usarCredenciaisFornecidas: true,
+            jogoNome: game.nome // 🆕 Enviar nome do jogo para criar automaticamente se não existir
+          }, {
+            timeout: 30000
+          })
+          
+          const resultadoFormatado = {
+            status: response.data.sucesso ? 'concluido' : 'erro',
+            mensagem: response.data.mensagem || response.data.error || `${contasEncontradas.length} conta(s) encontrada(s) e salva(s) com sucesso!`,
+            jogosAdicionados: 0,
+            contasAdicionadas: response.data.contasAdicionadas || contasEncontradas.length,
+            jogosAtualizados: 0,
+            totalJogos: 1,
+            jogosAdicionadosLista: [],
+            iniciado: new Date().toISOString(),
+            finalizado: response.data.timestamp || new Date().toISOString()
+          }
+          
+          setResultadoSincronizacao(resultadoFormatado)
+          setMostrarResultadoModal(true)
+          handleContasAtualizadas()
+          return // Sucesso, sair
+        }
+      }
+      
+      // 🔄 FALLBACK: Usar backend (código original)
+      console.log('🔄 [SYNC] Usando backend para sincronizar...')
       const response = await api.post(`/api/jogos/sincronizar/${game.id}`, {}, {
         timeout: 300000
       })
@@ -85,10 +177,29 @@ function GameModal({ game, onClose, abasConfig }) {
       
     } catch (error) {
       console.error('Erro ao sincronizar jogo:', error)
+      
+      // 🆕 Melhorar mensagem de erro 403
+      let mensagemErro = error.response?.data?.error || 'Erro ao sincronizar jogo'
+      let detalhesErro = error.response?.data?.detalhes || error.message
+      
+      if (error.response?.status === 403 || mensagemErro.includes('403') || detalhesErro.includes('403')) {
+        mensagemErro = 'Site bloqueando requisições (403)'
+        detalhesErro = 'O site pokopow.com está bloqueando o servidor. O frontend tentou primeiro, mas CORS bloqueou. O backend também foi bloqueado. Tente novamente mais tarde ou adicione contas manualmente.'
+      } else if (error.response?.status === 404) {
+        // Verificar se é erro do backend (jogo não existe no banco) ou do site
+        if (mensagemErro.includes('Jogo não encontrado') || mensagemErro.includes('não encontrado')) {
+          mensagemErro = 'Jogo não encontrado no banco de dados'
+          detalhesErro = `O jogo "${game.nome}" (ID: ${game.id}) não existe no banco de dados do backend na nuvem. Isso pode acontecer se o jogo foi adicionado apenas localmente. Tente recarregar a página ou adicione contas manualmente.`
+        } else {
+          mensagemErro = 'Jogo não encontrado no site'
+          detalhesErro = `O jogo "${game.nome}" não foi encontrado no site pokopow.com. Isso pode acontecer se o jogo não existe no site ou se o nome está diferente. Você pode adicionar contas manualmente.`
+        }
+      }
+      
       const resultadoErro = {
         status: 'erro',
-        mensagem: error.response?.data?.error || 'Erro ao sincronizar jogo',
-        detalhes: error.response?.data?.detalhes || error.message,
+        mensagem: mensagemErro,
+        detalhes: detalhesErro,
         jogosAdicionados: 0,
         contasAdicionadas: 0,
         jogosAtualizados: 0,
@@ -204,6 +315,8 @@ function GameModal({ game, onClose, abasConfig }) {
     <>
       <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="w-[90vw] max-w-[800px] h-[85vh] overflow-y-auto bg-gray-950 border-2 border-cyan-500/50 shadow-[0_0_50px_rgba(6,182,212,0.3)] p-0">
+          <DialogTitle className="sr-only">{game.nome}</DialogTitle>
+          <DialogDescription className="sr-only">Detalhes e contas do jogo {game.nome}</DialogDescription>
           {/* Close button */}
           <button
             onClick={onClose}

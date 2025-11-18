@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Dialog, DialogContent } from './ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
 import { X, Plus, Edit, Trash2, UserCheck, UserX } from 'lucide-react';
 
 function AdminPanel({ isOpen, onClose }) {
@@ -125,6 +125,8 @@ function AdminPanel({ isOpen, onClose }) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-gray-900 border-2 border-cyan-500">
+        <DialogTitle className="sr-only">Painel Administrativo</DialogTitle>
+        <DialogDescription className="sr-only">Gerenciamento de usuários e configurações do sistema</DialogDescription>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-cyan-400">Painel Administrativo</h2>
           <div className="flex gap-2">

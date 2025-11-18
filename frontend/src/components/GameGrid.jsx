@@ -17,7 +17,9 @@ function GameGrid({ onGameClick, onJogosCountChange, gridConfig }) {
     const fetchJogos = async () => {
       try {
         setLoading(true)
-        const response = await api.get('/api/jogos')
+        
+        // Buscar jogos com contagem de contas (mais eficiente - uma única query SQL)
+        const response = await api.get('/api/jogos?comContas=true')
         const jogosData = response.data
         setJogos(jogosData)
         setError(null)
@@ -27,33 +29,14 @@ function GameGrid({ onGameClick, onJogosCountChange, gridConfig }) {
           onJogosCountChange(jogosData.length)
         }
 
-        // Buscar contas para cada jogo
+        // Usar contagens que já vêm com os jogos (muito mais rápido!)
         const contasData = {}
-        await Promise.all(
-          jogosData.map(async (jogo) => {
-            try {
-              const contasResponse = await api.get(`/api/contas/${jogo.id}`)
-              const contas = contasResponse.data || []
-              
-              // Contar contas válidas
-              const validas = contas.filter(conta => {
-                const status = conta.status?.toLowerCase() || ''
-                return status === 'disponivel' || status === 'funcionando' || status === 'valid'
-              }).length
-              
-              contasData[jogo.id] = {
-                validas: validas,
-                total: contas.length
-              }
-            } catch (err) {
-              console.error(`Erro ao buscar contas do jogo ${jogo.id}:`, err)
-              contasData[jogo.id] = {
-                validas: 0,
-                total: 0
-              }
-            }
-          })
-        )
+        jogosData.forEach(jogo => {
+          contasData[jogo.id] = {
+            validas: jogo.contasValidas || 0,
+            total: jogo.totalContas || 0
+          }
+        })
         
         setContasPorJogo(contasData)
       } catch (err) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
-import { Dialog, DialogContent } from './ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog'
 import { X, ChevronDown, ChevronUp } from 'lucide-react'
 
 function BibliotecaModal({ isOpen, onClose }) {
@@ -111,6 +111,8 @@ function BibliotecaModal({ isOpen, onClose }) {
         onEscapeKeyDown={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => e.preventDefault()}
       >
+        <DialogTitle className="sr-only">Biblioteca de Jogos</DialogTitle>
+        <DialogDescription className="sr-only">Lista de jogos adicionados à biblioteca com suas contas</DialogDescription>
         {/* Botão X */}
         <button
           type="button"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../services/api'
-import { Dialog, DialogContent } from './ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog'
 import { X } from 'lucide-react'
 
 /**
@@ -43,12 +43,64 @@ function CredenciaisModal({ jogo, onClose, conta }) {
         
         // Se o jogo tem ID (vem do banco), buscar contas do banco
         if (jogo.id) {
-          const response = await api.get(`/api/contas/${jogo.id}`)
-          const contas = response.data || []
-          setCredenciais(contas.map(conta => ({
-            user: conta.usuario,
-            pass: conta.senha
-          })))
+          // Primeiro buscar do banco (caso já existam)
+          try {
+            const response = await api.get(`/api/contas/${jogo.id}`)
+            const contas = response.data || []
+            
+            if (contas.length > 0) {
+              // Se já tem contas no banco, mostrar
+              setCredenciais(contas.map(conta => ({
+                user: conta.usuario,
+                pass: conta.senha
+              })))
+              setLoading(false)
+              return
+            }
+          } catch (err) {
+            console.error('Erro ao buscar contas do banco:', err)
+          }
+          
+          // Se não tem contas no banco, solicitar busca imediata via scraper local
+          if (jogo.nome) {
+            setLoadingMessage('Buscando contas no site (isso pode levar alguns minutos)...')
+            
+            try {
+              // Chamar endpoint que solicita busca imediata via scraper local
+              const response = await api.get(`/api/busca/credenciais?url=${encodeURIComponent(jogo.url || '')}&jogoId=${jogo.id}&jogoNome=${encodeURIComponent(jogo.nome)}`, {
+                timeout: 120000 // 2 minutos para dar tempo do scraper buscar
+              })
+              
+              const credenciaisEncontradas = response.data?.credenciais || []
+              
+              if (credenciaisEncontradas.length > 0) {
+                setCredenciais(credenciaisEncontradas)
+              } else {
+                setError('Nenhuma conta encontrada no momento. O scraper local está buscando automaticamente em segundo plano. Tente novamente em alguns minutos.')
+              }
+            } catch (err) {
+              console.error('Erro ao buscar via scraper local:', err)
+              // Se falhar, ainda tentar buscar do banco novamente
+              try {
+                const response = await api.get(`/api/contas/${jogo.id}`)
+                const contas = response.data || []
+                setCredenciais(contas.map(conta => ({
+                  user: conta.usuario,
+                  pass: conta.senha
+                })))
+              } catch (err2) {
+                setError('Não foi possível buscar contas. Verifique se o scraper local está rodando em scripts-local/')
+              }
+            }
+          } else {
+            // Se não tem nome, apenas buscar do banco
+            const response = await api.get(`/api/contas/${jogo.id}`)
+            const contas = response.data || []
+            setCredenciais(contas.map(conta => ({
+              user: conta.usuario,
+              pass: conta.senha
+            })))
+          }
         } 
         // Se não tem ID mas tem URL, buscar do site
         else if (jogo.url) {
@@ -300,7 +352,7 @@ function CredenciaisModal({ jogo, onClose, conta }) {
         }
       }}
     >
-      <DialogContent 
+      <DialogContent
         className="max-w-6xl w-[95vw] max-h-[90vh] overflow-hidden bg-gray-950 border-2 border-cyan-500/50 shadow-[0_0_50px_rgba(6,182,212,0.3)] p-0 flex flex-col"
         onInteractOutside={(e) => {
           // Bloquear fechamento ao clicar fora
@@ -315,6 +367,8 @@ function CredenciaisModal({ jogo, onClose, conta }) {
           e.preventDefault()
         }}
       >
+        <DialogTitle className="sr-only">Credenciais do Jogo</DialogTitle>
+        <DialogDescription className="sr-only">Credenciais de acesso para {jogo?.nome || 'o jogo'}</DialogDescription>
         {/* Botão X customizado - única forma de fechar */}
         <button
           type="button"

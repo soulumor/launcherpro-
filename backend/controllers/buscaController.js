@@ -60,7 +60,9 @@ exports.buscarJogos = async (req, res) => {
     });
     
     // 2. SEGUNDO: Buscar online se solicitado OU se não encontrou muitos resultados
-    const deveBuscarOnline = buscarNoSite || resultados.length < 5;
+    // ⚠️ BUSCA ONLINE DESABILITADA - Site bloqueando com 403
+    // Use o scraper local (scripts-local/) para buscar contas automaticamente
+    const deveBuscarOnline = false; // Desabilitado - site bloqueando
     
     if (deveBuscarOnline) {
       console.log(`🌐 Buscando online...`);
@@ -99,6 +101,10 @@ exports.buscarJogos = async (req, res) => {
         console.error('Stack:', onlineError.stack);
         // Continuar mesmo se der erro online - retornar pelo menos os resultados do banco
       }
+    } else if (buscarNoSite) {
+      // Se usuário marcou "Local + Online" mas busca online está desabilitada
+      console.log(`ℹ️  Busca online desabilitada (site bloqueando com 403)`);
+      console.log(`💡 Use o scraper local (scripts-local/) para buscar contas automaticamente`);
     }
     
     // Limitar a 50 resultados quando busca online também
@@ -135,7 +141,131 @@ exports.extrairCredenciais = async (req, res) => {
   }
 
   try {
-    console.log(`🔍 Iniciando extração de credenciais para: ${url}`);
+    const { jogoId, jogoNome } = req.query;
+    
+    // Se jogoId e jogoNome foram fornecidos, tentar buscar via scraper local
+    if (jogoId && jogoNome) {
+      console.log(`🔍 Solicitando busca imediata via scraper local: ${jogoNome} (ID: ${jogoId})`);
+      
+      try {
+        // Fazer requisição para scraper local
+        const http = require('http');
+        const scraperResponse = await new Promise((resolve, reject) => {
+          const postData = JSON.stringify({ jogoId: parseInt(jogoId), jogoNome });
+          
+          const options = {
+            hostname: 'localhost',
+            port: 3002,
+            path: '/buscar-contas',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 60000 // 60 segundos
+          };
+          
+          const req = http.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              try {
+                resolve(JSON.parse(data));
+              } catch (err) {
+                reject(new Error('Resposta inválida do scraper local'));
+              }
+            });
+          });
+          
+          req.on('error', (err) => {
+            reject(new Error(`Scraper local não está rodando: ${err.message}`));
+          });
+          
+          req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Timeout ao conectar com scraper local'));
+          });
+          
+          req.write(postData);
+          req.end();
+        });
+        
+        if (scraperResponse.sucesso) {
+          console.log(`✅ Scraper local encontrou ${scraperResponse.contasAdicionadas} conta(s)`);
+          
+          // Buscar contas do banco após adicionar
+          const { getDatabase } = require('../database/database');
+          const db = getDatabase();
+          
+          const contas = await new Promise((resolve, reject) => {
+            db.all('SELECT usuario, senha FROM contas WHERE jogo_id = ?', [jogoId], (err, rows) => {
+              if (err) reject(err);
+              else resolve(rows || []);
+            });
+          });
+          
+          return res.json({
+            url,
+            total: contas.length,
+            credenciais: contas.map(c => ({ user: c.usuario, pass: c.senha }))
+          });
+        } else {
+          console.log(`⚠️  Scraper local: ${scraperResponse.mensagem}`);
+        }
+      } catch (scraperError) {
+        console.log(`⚠️  Scraper local não disponível: ${scraperError.message}`);
+        console.log(`💡 Inicie o scraper local em scripts-local/ para busca imediata`);
+      }
+    }
+    
+    // Fallback: buscar contas do banco (se já existirem)
+    const { getDatabase } = require('../database/database');
+    const db = getDatabase();
+    
+    // Tentar extrair jogoId da URL ou usar query param
+    let jogoIdParaBusca = jogoId;
+    
+    if (!jogoIdParaBusca && url) {
+      // Tentar buscar jogo pela URL
+      const jogos = await new Promise((resolve, reject) => {
+        db.all('SELECT id FROM jogos WHERE url LIKE ?', [`%${url}%`], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      });
+      
+      if (jogos.length > 0) {
+        jogoIdParaBusca = jogos[0].id;
+      }
+    }
+    
+    if (jogoIdParaBusca) {
+      const contas = await new Promise((resolve, reject) => {
+        db.all('SELECT usuario, senha FROM contas WHERE jogo_id = ?', [jogoIdParaBusca], (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows || []);
+        });
+      });
+      
+      if (contas.length > 0) {
+        return res.json({
+          url,
+          total: contas.length,
+          credenciais: contas.map(c => ({ user: c.usuario, pass: c.senha }))
+        });
+      }
+    }
+    
+    // Se não encontrou nada, retornar vazio
+    res.json({
+      url,
+      total: 0,
+      credenciais: [],
+      mensagem: 'Nenhuma conta encontrada. O scraper local está buscando automaticamente em segundo plano.'
+    });
+    return;
+    
+    /* CÓDIGO COMENTADO - Busca online desabilitada por causa de 403
     const scraper = new PokopowScraper();
     
     // Extrair credenciais da página (com retry automático)
@@ -148,6 +278,7 @@ exports.extrairCredenciais = async (req, res) => {
       total: credenciais.length,
       credenciais: credenciais
     });
+    */
   } catch (error) {
     console.error('Erro ao extrair credenciais:', error);
     

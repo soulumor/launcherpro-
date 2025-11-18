@@ -1,0 +1,27 @@
+{
+  "name": "launcherpro-scraper-local",
+  "version": "1.0.0",
+  "description": "Script local para buscar contas do site usando Puppeteer e enviar para backend na nuvem",
+  "main": "buscar-contas-background.js",
+  "scripts": {
+    "start": "node buscar-contas-background.js",
+    "dev": "node buscar-contas-background.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "scraper",
+    "background"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer": "^21.0.0",
+    "axios": "^1.6.0"
+  }
+}
+
+
+
+
+
+

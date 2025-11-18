@@ -2,8 +2,8 @@ import axios from 'axios';
 
 // URL base da API - pode ser configurada via variável de ambiente
 // Em desenvolvimento, usa o proxy do Vite (vazio = relativo)
-// Em produção, usa a URL completa do backend hospedado
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'http://localhost:3001');
+// Em produção, usa a URL completa do backend hospedado na nuvem
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? '' : 'https://launcherpro.onrender.com');
 
 // Criar instância do axios
 const api = axios.create({
@@ -58,11 +58,39 @@ api.interceptors.response.use(
   }
 );
 
+// Função auxiliar para "acordar" o servidor Render.com (se estiver dormindo)
+const wakeUpServer = async () => {
+  try {
+    // Tentar fazer uma requisição simples para acordar o servidor
+    const wakeUrl = API_URL || 'https://launcherpro.onrender.com';
+    await fetch(wakeUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(10000) // 10 segundos para tentar acordar
+    }).catch(() => {
+      // Ignorar erros - apenas tentar acordar
+    });
+  } catch (error) {
+    // Ignorar erros - apenas tentar acordar
+  }
+};
+
 // Funções de autenticação
 export const authService = {
   login: async (email, senha) => {
     try {
-      const response = await api.post('/api/auth/login', { email, senha });
+      // Tentar "acordar" o servidor primeiro (se estiver na nuvem)
+      if (!import.meta.env.DEV && API_URL && API_URL.includes('onrender.com')) {
+        console.log('⏰ Tentando acordar o servidor Render.com...');
+        await wakeUpServer();
+        // Aguardar um pouco para o servidor processar
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        console.log('✅ Aguardando servidor acordar...');
+      }
+      
+      // Timeout maior para login (60 segundos) - Render.com pode estar "dormindo" e precisa acordar
+      const response = await api.post('/api/auth/login', { email, senha }, {
+        timeout: 60000 // 60 segundos para dar tempo do servidor "acordar"
+      });
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));

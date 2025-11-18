@@ -1,0 +1,80 @@
+========================================
+COMO ABRIR O APP CORRETAMENTE
+========================================
+
+IMPORTANTE: NAO ABRA O index.html DIRETAMENTE!
+
+O app precisa rodar em um servidor HTTP.
+
+========================================
+OPCAO 1: Script Automatico (RECOMENDADO)
+========================================
+
+Execute no PowerShell:
+  .\ABRIR-APP.ps1
+
+Isso vai:
+- Verificar se o servidor esta rodando
+- Iniciar o servidor se necessario
+- Abrir o navegador automaticamente
+
+========================================
+OPCAO 2: Manual
+========================================
+
+1. Abra o PowerShell na pasta do projeto
+
+2. Execute:
+   cd frontend
+   npm run preview
+
+3. Aguarde a mensagem:
+   "Local: http://localhost:4173/"
+
+4. Abra o navegador e acesse:
+   http://localhost:4173
+
+========================================
+OPCAO 3: Usar o Script servir-app.ps1
+========================================
+
+Execute:
+  .\servir-app.ps1
+
+========================================
+POR QUE NAO FUNCIONA ABRIR DIRETO?
+========================================
+
+Quando voce clica duas vezes no index.html:
+- O navegador abre com "file://" 
+- Isso bloqueia recursos JavaScript
+- O app nao funciona
+
+Quando usa um servidor HTTP:
+- O navegador abre com "http://localhost"
+- Todos os recursos carregam corretamente
+- O app funciona perfeitamente
+
+========================================
+CREDENCIAIS DE LOGIN
+========================================
+
+Email: cursorsemanal@gmail.com
+Senha: Senha123
+
+========================================
+DICA
+========================================
+
+Crie um atalho na area de trabalho para:
+  .\ABRIR-APP.ps1
+
+Assim voce pode abrir o app com um duplo clique!
+
+========================================
+
+
+
+
+
+

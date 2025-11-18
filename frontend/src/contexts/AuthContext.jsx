@@ -67,6 +67,23 @@ export function AuthProvider({ children }) {
       return { success: true, data };
     } catch (error) {
       console.error('Erro no login:', error);
+      
+      // Tratar especificamente erros de timeout
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('exceeded')) {
+        return {
+          success: false,
+          error: 'Timeout: O servidor na nuvem pode estar "dormindo" (Render.com). Aguarde alguns segundos e tente novamente. O primeiro acesso pode demorar até 60 segundos para o servidor "acordar".'
+        };
+      }
+      
+      // Tratar erros de conexão
+      if (error.code === 'ECONNREFUSED' || error.message?.includes('Network Error') || error.message?.includes('Failed to fetch')) {
+        return {
+          success: false,
+          error: 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e se o backend está online em https://launcherpro.onrender.com'
+        };
+      }
+      
       const errorMessage = error.response?.data?.error || error.message || 'Erro ao fazer login. Verifique sua conexão.';
       return {
         success: false,

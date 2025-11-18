@@ -9,18 +9,61 @@ const PokopowScraper = require('../services/pokopowScraper');
 /**
  * Lista todos os jogos
  * GET /api/jogos
+ * Query params: ?comContas=true (inclui contagem de contas)
  */
 exports.listarJogos = (req, res) => {
   const db = getDatabase();
+  const { comContas } = req.query;
   
-  db.all('SELECT * FROM jogos ORDER BY id DESC', (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar jogos:', err);
-      return res.status(500).json({ error: 'Erro ao buscar jogos' });
-    }
-    
-    res.json(rows);
-  });
+  if (comContas === 'true') {
+    // Buscar jogos com contagem de contas (mais eficiente)
+    db.all(`
+      SELECT 
+        j.id,
+        j.nome,
+        j.descricao,
+        j.preco,
+        j.capa,
+        COUNT(DISTINCT c.id) as total_contas,
+        COUNT(DISTINCT CASE 
+          WHEN LOWER(c.status) IN ('disponivel', 'funcionando', 'valid') 
+          THEN c.id 
+        END) as contas_validas
+      FROM jogos j
+      LEFT JOIN contas c ON j.id = c.jogo_id
+      GROUP BY j.id, j.nome, j.descricao, j.preco, j.capa
+      ORDER BY j.id DESC
+    `, (err, rows) => {
+      if (err) {
+        console.error('Erro ao buscar jogos com contas:', err);
+        return res.status(500).json({ error: 'Erro ao buscar jogos' });
+      }
+      
+      // Formatar resposta
+      const jogos = rows.map(row => ({
+        id: row.id,
+        nome: row.nome,
+        descricao: row.descricao,
+        preco: row.preco,
+        capa: row.capa,
+        url: `https://pokopow.com/${row.nome.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')}`, // 🆕 Adicionar URL
+        totalContas: row.total_contas || 0,
+        contasValidas: row.contas_validas || 0
+      }));
+      
+      res.json(jogos);
+    });
+  } else {
+    // Buscar apenas jogos (padrão - mais rápido)
+    db.all('SELECT * FROM jogos ORDER BY id DESC', (err, rows) => {
+      if (err) {
+        console.error('Erro ao buscar jogos:', err);
+        return res.status(500).json({ error: 'Erro ao buscar jogos' });
+      }
+      
+      res.json(rows);
+    });
+  }
 };
 
 /**
@@ -170,6 +213,7 @@ exports.adicionarJogo = async (req, res) => {
  */
 exports.sincronizarJogo = async (req, res) => {
   const { jogoId } = req.params;
+  const { credenciais: credenciaisFornecidas, usarCredenciaisFornecidas } = req.body; // 🆕 Aceitar credenciais do frontend
   const db = getDatabase();
   const scraper = new PokopowScraper();
   
@@ -181,11 +225,183 @@ exports.sincronizarJogo = async (req, res) => {
         return res.status(500).json({ error: 'Erro ao buscar jogo' });
       }
       
+      // 🆕 Se credenciais foram fornecidas pelo frontend e jogo não existe, criar o jogo automaticamente
+      if (!jogo && usarCredenciaisFornecidas && credenciaisFornecidas && Array.isArray(credenciaisFornecidas) && credenciaisFornecidas.length > 0) {
+        const { jogoNome } = req.body; // Nome do jogo vindo do frontend
+        
+        if (!jogoNome) {
+          return res.status(404).json({ 
+            error: 'Jogo não encontrado',
+            detalhes: 'Jogo não existe no banco e nome do jogo não foi fornecido'
+          });
+        }
+        
+        console.log(`🆕 Jogo não existe no banco. Criando automaticamente: ${jogoNome} (ID solicitado: ${jogoId})`);
+        
+        // Função auxiliar para processar credenciais após criar o jogo
+        const processarCredenciais = async (novoJogo) => {
+          try {
+            // Buscar contas existentes
+            const contasExistentes = await new Promise((resolve, reject) => {
+              db.all('SELECT usuario FROM contas WHERE jogo_id = ?', [novoJogo.id], (err, rows) => {
+                if (err) reject(err);
+                else resolve((rows || []).map(r => r.usuario.toLowerCase()));
+              });
+            });
+            
+            const usuariosExistentes = new Set(contasExistentes);
+            let contasAdicionadas = 0;
+            let contasJaExistentes = 0;
+            
+            // Adicionar novas contas
+            for (const cred of credenciaisFornecidas) {
+              if (!cred.user || !cred.pass) continue;
+              
+              const usuarioLower = cred.user.toLowerCase();
+              
+              if (usuariosExistentes.has(usuarioLower)) {
+                contasJaExistentes++;
+                continue;
+              }
+              
+              // Adicionar nova conta
+              await new Promise((resolve) => {
+                db.run(
+                  'INSERT INTO contas (jogo_id, usuario, senha, status) VALUES (?, ?, ?, ?)',
+                  [novoJogo.id, cred.user, cred.pass, 'disponivel'],
+                  (insertErr) => {
+                    if (!insertErr) {
+                      contasAdicionadas++;
+                      console.log(`   ✅ Conta adicionada (frontend): ${cred.user}`);
+                    }
+                    resolve();
+                  }
+                );
+              });
+            }
+            
+            console.log(`✅ Sincronização concluída (frontend): ${contasAdicionadas} nova(s) conta(s) adicionada(s)`);
+            
+            return res.json({
+              sucesso: true,
+              jogoId: novoJogo.id,
+              jogoNome: novoJogo.nome,
+              jogoCriado: true, // 🆕 Indicar que o jogo foi criado
+              contasAdicionadas,
+              contasJaExistentes,
+              totalCredenciaisSite: credenciaisFornecidas.length,
+              mensagem: `${contasAdicionadas} nova(s) conta(s) adicionada(s) com sucesso! (Jogo criado automaticamente)`,
+              timestamp: new Date().toISOString()
+            });
+          } catch (error) {
+            console.error('Erro ao processar credenciais do frontend:', error);
+            return res.status(500).json({ 
+              error: 'Erro ao processar credenciais do frontend',
+              detalhes: error.message 
+            });
+          }
+        };
+        
+        // Criar o jogo no banco
+        db.run(
+          'INSERT INTO jogos (nome, descricao, preco, capa) VALUES (?, ?, ?, ?)',
+          [jogoNome, null, 0, null], // Preço padrão 0, sem descrição/capa por enquanto
+          function(insertErr) {
+            if (insertErr) {
+              console.error('Erro ao criar jogo:', insertErr);
+              return res.status(500).json({ error: 'Erro ao criar jogo no banco', detalhes: insertErr.message });
+            }
+            
+            const novoJogoId = this.lastID;
+            console.log(`✅ Jogo criado com sucesso! Novo ID: ${novoJogoId}`);
+            
+            // Buscar o jogo recém-criado
+            db.get('SELECT * FROM jogos WHERE id = ?', [novoJogoId], async (err, novoJogo) => {
+              if (err || !novoJogo) {
+                return res.status(500).json({ error: 'Jogo criado mas erro ao buscar dados' });
+              }
+              
+              // Processar credenciais usando o novo jogo
+              await processarCredenciais(novoJogo);
+            });
+          }
+        );
+        
+        return; // Sair da função, o processamento continua no callback
+      }
+      
       if (!jogo) {
         return res.status(404).json({ error: 'Jogo não encontrado' });
       }
       
       console.log(`🔄 Sincronizando jogo: ${jogo.nome} (ID: ${jogoId})`);
+      
+      // 🆕 Se credenciais foram fornecidas pelo frontend, usar elas diretamente
+      if (usarCredenciaisFornecidas && credenciaisFornecidas && Array.isArray(credenciaisFornecidas) && credenciaisFornecidas.length > 0) {
+        console.log(`📥 Usando ${credenciaisFornecidas.length} credencial(is) fornecida(s) pelo frontend`);
+        
+        try {
+          // Buscar contas existentes
+          const contasExistentes = await new Promise((resolve, reject) => {
+            db.all('SELECT usuario FROM contas WHERE jogo_id = ?', [jogoId], (err, rows) => {
+              if (err) reject(err);
+              else resolve((rows || []).map(r => r.usuario.toLowerCase()));
+            });
+          });
+          
+          const usuariosExistentes = new Set(contasExistentes);
+          let contasAdicionadas = 0;
+          let contasJaExistentes = 0;
+          
+          // Adicionar novas contas
+          for (const cred of credenciaisFornecidas) {
+            if (!cred.user || !cred.pass) continue;
+            
+            const usuarioLower = cred.user.toLowerCase();
+            
+            if (usuariosExistentes.has(usuarioLower)) {
+              contasJaExistentes++;
+              continue;
+            }
+            
+            // Adicionar nova conta
+            await new Promise((resolve) => {
+              db.run(
+                'INSERT INTO contas (jogo_id, usuario, senha, status) VALUES (?, ?, ?, ?)',
+                [jogoId, cred.user, cred.pass, 'disponivel'],
+                (insertErr) => {
+                  if (!insertErr) {
+                    contasAdicionadas++;
+                    console.log(`   ✅ Conta adicionada (frontend): ${cred.user}`);
+                  }
+                  resolve();
+                }
+              );
+            });
+          }
+          
+          console.log(`✅ Sincronização concluída (frontend): ${contasAdicionadas} nova(s) conta(s) adicionada(s)`);
+          
+          return res.json({
+            sucesso: true,
+            jogoId: parseInt(jogoId),
+            jogoNome: jogo.nome,
+            contasAdicionadas,
+            contasJaExistentes,
+            totalCredenciaisSite: credenciaisFornecidas.length,
+            mensagem: contasAdicionadas > 0 
+              ? `${contasAdicionadas} nova(s) conta(s) adicionada(s) com sucesso! (encontradas pelo frontend)`
+              : 'Nenhuma conta nova encontrada. Todas as contas já estão no banco.',
+            timestamp: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Erro ao processar credenciais do frontend:', error);
+          return res.status(500).json({ 
+            error: 'Erro ao processar credenciais do frontend',
+            detalhes: error.message 
+          });
+        }
+      }
       
       // Buscar o jogo no site - OTIMIZADO: tenta URL direta primeiro
       let jogoNoSite = null;
@@ -251,6 +467,21 @@ exports.sincronizarJogo = async (req, res) => {
           }
         }
       } catch (error) {
+        // 🆕 Melhorar tratamento de erro 403
+        const is403 = error.message?.includes('403') || 
+                      error.response?.status === 403 ||
+                      error.code === 403 ||
+                      (error.response && error.response.statusCode === 403);
+        
+        if (is403) {
+          console.error('🚫 Site bloqueando com 403 (pokopow.com)');
+          return res.status(403).json({ 
+            error: 'Site bloqueando requisições',
+            mensagem: 'O site pokopow.com está bloqueando requisições do servidor (erro 403). Tente novamente mais tarde ou adicione contas manualmente.',
+            detalhes: 'O site pode estar bloqueando o IP do servidor Render.com. Tente usar a busca pelo frontend ou adicionar contas manualmente.'
+          });
+        }
+        
         console.error('Erro ao buscar jogo no site:', error);
         return res.status(500).json({ 
           error: 'Erro ao buscar jogo no site',

@@ -18,8 +18,17 @@ setInterval(() => {
 /**
  * Middleware para limitar tentativas de login
  * Bloqueia após 5 tentativas falhadas em 15 minutos
+ * 
+ * Para desabilitar temporariamente, defina a variável de ambiente:
+ * DISABLE_RATE_LIMITER=true
  */
 function loginRateLimiter(req, res, next) {
+  // Verificar se rate limiter está desabilitado via variável de ambiente
+  if (process.env.DISABLE_RATE_LIMITER === 'true' || process.env.DISABLE_RATE_LIMITER === '1') {
+    // Rate limiter desabilitado - permitir todas as tentativas
+    return next();
+  }
+  
   const ip = req.ip || req.connection.remoteAddress || 'unknown';
   const now = Date.now();
   

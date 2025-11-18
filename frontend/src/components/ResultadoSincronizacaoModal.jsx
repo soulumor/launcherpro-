@@ -1,4 +1,4 @@
-import { Dialog, DialogContent } from './ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog'
 import { X, CheckCircle2, XCircle, Gamepad2, Users, RefreshCw } from 'lucide-react'
 
 /**
@@ -17,6 +17,8 @@ function ResultadoSincronizacaoModal({ resultado, onClose }) {
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
+        <DialogTitle className="sr-only">Resultado da Sincronização</DialogTitle>
+        <DialogDescription className="sr-only">Detalhes do resultado da sincronização de jogos e contas</DialogDescription>
         {/* Header */}
         <div className="sticky top-0 bg-gray-900 border-b-2 border-cyan-500/50 p-6 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
