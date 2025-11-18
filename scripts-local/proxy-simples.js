@@ -554,6 +554,28 @@ const server = http.createServer(async (req, res) => {
         
         console.log(`✅ [PROXY] HTML recebido (${html.length} caracteres)`);
         
+        // Verificar se é página de erro do Cloudflare
+        const htmlLower = html.toLowerCase();
+        if (htmlLower.includes('cloudflare') || 
+            htmlLower.includes('error code 500') || 
+            htmlLower.includes('internal server error') ||
+            htmlLower.includes('checking your browser') ||
+            htmlLower.includes('ray id')) {
+          console.log(`   🛡️ [CLOUDFLARE] Site bloqueado pelo Cloudflare (proteção anti-bot)`);
+          console.log(`   ⚠️  O site detectou automação e está bloqueando requisições`);
+          
+          res.writeHead(200);
+          res.end(JSON.stringify({ 
+            sucesso: false,
+            erro: 'Cloudflare bloqueou a requisição',
+            bloqueado: true,
+            credenciais: [],
+            encontradas: 0,
+            url: url
+          }));
+          return;
+        }
+        
         // Extrair credenciais
         const credenciais = extrairCredenciaisDoHTML(html);
         
