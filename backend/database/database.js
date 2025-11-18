@@ -1,6 +1,29 @@
+// Detectar se deve usar PostgreSQL (Supabase) ou SQLite
+// Se DATABASE_URL estiver definida, usa PostgreSQL
+// Caso contrário, usa SQLite (comportamento padrão)
+
+// Verificar DATABASE_URL de forma mais robusta
+const databaseUrl = process.env.DATABASE_URL || '';
+
+// Log de debug
+console.log('🔍 Verificando configuração do banco de dados...');
+console.log(`   DATABASE_URL existe: ${!!process.env.DATABASE_URL}`);
+if (process.env.DATABASE_URL) {
+  const maskedUrl = process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@');
+  console.log(`   DATABASE_URL: ${maskedUrl.substring(0, 80)}...`);
+}
+
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0) {
+  // Usar PostgreSQL (Supabase)
+  console.log('✅ DATABASE_URL detectada, usando PostgreSQL (Supabase)');
+  module.exports = require('./postgres');
+} else {
+  // Usar SQLite (código original)
+  console.log('⚠️  DATABASE_URL não encontrada, usando SQLite');
+  console.log('   Para usar Supabase, configure DATABASE_URL no Render (Environment Variables)');
+  
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const fs = require('fs');
 const { buscarCapaJogo } = require('../services/capaService');
 
 // Caminho do banco de dados
@@ -215,98 +238,53 @@ function insertSampleData() {
         return;
       }
       
-      // Tentar carregar jogos do arquivo JSON de inicialização
-      const jogosIniciaisPath = path.join(__dirname, '../data/jogos-iniciais.json');
-      let jogos = [];
-      
-      try {
-        if (fs.existsSync(jogosIniciaisPath)) {
-          console.log('📦 Carregando jogos iniciais do arquivo JSON...');
-          const dadosJson = fs.readFileSync(jogosIniciaisPath, 'utf8');
-          const dadosExportados = JSON.parse(dadosJson);
-          
-          if (dadosExportados.jogos && Array.isArray(dadosExportados.jogos)) {
-            jogos = dadosExportados.jogos;
-            console.log(`✅ Carregados ${jogos.length} jogos do arquivo de inicialização`);
-          } else {
-            throw new Error('Formato inválido no arquivo JSON');
-          }
-        } else {
-          console.log('⚠️  Arquivo jogos-iniciais.json não encontrado, usando jogos de exemplo padrão');
+      // Inserir jogos de exemplo (sem capas - serão buscadas automaticamente)
+      const jogos = [
+        {
+          nome: 'The Witcher 3: Wild Hunt',
+          descricao: 'Uma aventura épica de RPG em mundo aberto onde você é Geralt de Rivia, um caçador de monstros.',
+          preco: 79.99
+        },
+        {
+          nome: 'Cyberpunk 2077',
+          descricao: 'Um RPG de ação e aventura ambientado em Night City, uma megalópole obcecada por poder, glamour e modificações corporais.',
+          preco: 149.99
+        },
+        {
+          nome: 'Grand Theft Auto V',
+          descricao: 'Explore o mundo de Los Santos e Blaine County nesta versão completa do GTA V com gráficos aprimorados.',
+          preco: 89.99
+        },
+        {
+          nome: 'Red Dead Redemption 2',
+          descricao: 'Viva a história épica de Arthur Morgan e a gangue Van der Linde enquanto eles fogem através de uma América hostil.',
+          preco: 199.99
         }
-      } catch (jsonErr) {
-        console.log('⚠️  Erro ao carregar jogos-iniciais.json, usando jogos de exemplo padrão:', jsonErr.message);
-      }
+      ];
       
-      // Se não conseguiu carregar do JSON, usar jogos de exemplo padrão
-      if (jogos.length === 0) {
-        jogos = [
-          {
-            nome: 'The Witcher 3: Wild Hunt',
-            descricao: 'Uma aventura épica de RPG em mundo aberto onde você é Geralt de Rivia, um caçador de monstros.',
-            preco: 79.99,
-            capa: null
-          },
-          {
-            nome: 'Cyberpunk 2077',
-            descricao: 'Um RPG de ação e aventura ambientado em Night City, uma megalópole obcecada por poder, glamour e modificações corporais.',
-            preco: 149.99,
-            capa: null
-          },
-          {
-            nome: 'Grand Theft Auto V',
-            descricao: 'Explore o mundo de Los Santos e Blaine County nesta versão completa do GTA V com gráficos aprimorados.',
-            preco: 89.99,
-            capa: null
-          },
-          {
-            nome: 'Red Dead Redemption 2',
-            descricao: 'Viva a história épica de Arthur Morgan e a gangue Van der Linde enquanto eles fogem através de uma América hostil.',
-            preco: 199.99,
-            capa: null
-          }
-        ];
-        console.log(`📋 Usando ${jogos.length} jogos de exemplo padrão`);
-      }
-      
-      // Função para inserir jogos
-      async function inserirJogos() {
+      // Função para inserir jogos com busca automática de capas
+      async function inserirJogosComCapas() {
         const stmt = db.prepare('INSERT INTO jogos (nome, descricao, preco, capa) VALUES (?, ?, ?, ?)');
-        let inseridos = 0;
         
         for (const jogo of jogos) {
           try {
-            // Se já tem capa no JSON, usar ela. Senão, buscar automaticamente
-            let capa = jogo.capa || null;
+            console.log(`🔍 Buscando capa para: ${jogo.nome}...`);
+            const capa = await buscarCapaJogo(jogo.nome);
             
-            if (!capa) {
-              // Buscar capa apenas se não tiver no JSON (para não sobrecarregar na primeira inicialização)
-              try {
-                console.log(`🔍 Buscando capa para: ${jogo.nome}...`);
-                capa = await buscarCapaJogo(jogo.nome);
-                if (capa) {
-                  console.log(`✅ Capa encontrada para: ${jogo.nome}`);
-                }
-              } catch (err) {
-                // Ignorar erro de busca de capa e continuar
-              }
+            if (capa) {
+              console.log(`✅ Capa encontrada para: ${jogo.nome}`);
+            } else {
+              console.log(`⚠️ Capa não encontrada para: ${jogo.nome}, usando placeholder`);
             }
             
-            stmt.run([jogo.nome || '', jogo.descricao || '', jogo.preco || 0, capa]);
-            inseridos++;
+            stmt.run([jogo.nome, jogo.descricao, jogo.preco, capa || null]);
             
-            // Log a cada 100 jogos para não sobrecarregar console
-            if (inseridos % 100 === 0) {
-              console.log(`📊 Inseridos ${inseridos}/${jogos.length} jogos...`);
-            }
-            
-            // Aguardar um pouco entre requisições se estiver buscando capas
-            if (!jogo.capa) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
+            // Aguardar um pouco entre requisições para não sobrecarregar
+            await new Promise(resolve => setTimeout(resolve, 500));
           } catch (err) {
-            console.error(`❌ Erro ao inserir ${jogo.nome}:`, err.message);
-            // Continuar mesmo com erro
+            console.error(`❌ Erro ao buscar capa para ${jogo.nome}:`, err.message);
+            // Inserir mesmo sem capa
+            stmt.run([jogo.nome, jogo.descricao, jogo.preco, null]);
           }
         }
         
@@ -316,14 +294,40 @@ function insertSampleData() {
             return;
           }
           
-          console.log(`✅ ${inseridos} jogos inseridos com sucesso!`);
-          // Não inserir contas de exemplo - serão adicionadas via sincronização
-          resolve();
+          // Inserir contas de exemplo para cada jogo
+          db.all('SELECT id FROM jogos', (err, jogos) => {
+            if (err || !jogos || jogos.length === 0) {
+              resolve(); // Continuar mesmo sem contas
+              return;
+            }
+            
+            const contasStmt = db.prepare('INSERT INTO contas (jogo_id, usuario, senha, status) VALUES (?, ?, ?, ?)');
+            
+            // Adicionar 2 contas para cada jogo
+            jogos.forEach((jogo, index) => {
+              const contas = [
+                { jogo_id: jogo.id, usuario: `player${jogo.id}_1`, senha: 'senha123', status: 'disponivel' },
+                { jogo_id: jogo.id, usuario: `player${jogo.id}_2`, senha: 'senha456', status: 'disponivel' }
+              ];
+              
+              contas.forEach((conta) => {
+                contasStmt.run([conta.jogo_id, conta.usuario, conta.senha, conta.status]);
+              });
+            });
+            
+            contasStmt.finalize((err) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+              resolve();
+            });
+          });
         });
       }
       
       // Executar inserção assíncrona
-      inserirJogos().catch(reject);
+      inserirJogosComCapas().catch(reject);
     });
   });
 }
@@ -343,4 +347,6 @@ module.exports = {
   initDatabase,
   getDatabase
 };
+
+} // Fim do bloco else (SQLite)
 

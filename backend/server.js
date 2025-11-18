@@ -1,6 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+
+// Log de variáveis de ambiente (debug)
+console.log('🔍 Variáveis de ambiente disponíveis:');
+console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? '✅ Configurada' : '❌ Não configurada'}`);
+if (process.env.DATABASE_URL) {
+  const masked = process.env.DATABASE_URL.replace(/:[^:@]+@/, ':****@');
+  console.log(`   Valor: ${masked.substring(0, 80)}...`);
+}
+console.log('');
+
 const { initDatabase } = require('./database/database');
 const jogosRoutes = require('./routes/jogos');
 const contasRoutes = require('./routes/contas');
