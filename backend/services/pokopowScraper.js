@@ -1,6 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const axiosCookieJar = require('axios-cookiejar-support').default;
+const axiosCookieJarSupport = require('axios-cookiejar-support');
 const tough = require('tough-cookie');
 
 /**
@@ -17,6 +17,8 @@ class PokopowScraper {
     
     // Configurar cookie jar para gerenciar cookies automaticamente
     this.cookieJar = new tough.CookieJar();
+    // axios-cookiejar-support pode ser uma função ou ter uma propriedade wrapper
+    const axiosCookieJar = axiosCookieJarSupport.default || axiosCookieJarSupport;
     this.axiosInstance = axiosCookieJar(axios.create({ 
       jar: this.cookieJar,
       withCredentials: true 
