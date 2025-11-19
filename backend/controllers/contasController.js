@@ -8,43 +8,68 @@ const TestadorLoginSteam = require('../services/testadorLoginSteam');
 /**
  * Lista todas as contas de um jogo específico
  * GET /api/contas/:jogoId
+ * Busca contas de TODOS os IDs do mesmo jogo (agrupado por nome normalizado)
  */
 exports.listarContasPorJogo = (req, res) => {
   const db = getDatabase();
   const { jogoId } = req.params;
   
-  // Retornar TODAS as contas (válidas e inválidas) para separação no frontend
-  db.all(
-    'SELECT * FROM contas WHERE jogo_id = ? ORDER BY id DESC',
+  // Primeiro, buscar o nome do jogo pelo ID
+  db.get(
+    'SELECT nome FROM jogos WHERE id = ?',
     [jogoId],
-    (err, rows) => {
+    (err, jogo) => {
       if (err) {
-        console.error('Erro ao buscar contas:', err);
-        return res.status(500).json({ error: 'Erro ao buscar contas' });
+        console.error('Erro ao buscar jogo:', err);
+        return res.status(500).json({ error: 'Erro ao buscar jogo' });
       }
       
-      // Garantir que rows é um array válido
-      // Se recebeu o objeto Result do PostgreSQL, extrair rows
-      let rowsArray = rows;
-      if (!Array.isArray(rows)) {
-        if (rows && Array.isArray(rows.rows)) {
-          // Recebeu objeto Result do PostgreSQL - extrair rows
-          rowsArray = rows.rows;
-        } else {
-          console.error('Erro: rows não é um array:', typeof rows, rows);
-          return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+      if (!jogo) {
+        return res.status(404).json({ error: 'Jogo não encontrado' });
+      }
+      
+      // Buscar contas de TODOS os IDs do mesmo jogo (mesmo nome normalizado)
+      // Isso resolve o problema de jogos duplicados com contas em IDs diferentes
+      const nomeNormalizado = jogo.nome.toLowerCase().trim();
+      
+      db.all(
+        `SELECT DISTINCT c.* 
+         FROM contas c
+         INNER JOIN jogos j ON c.jogo_id = j.id
+         WHERE LOWER(TRIM(j.nome)) = ?
+         ORDER BY c.id DESC`,
+        [nomeNormalizado],
+        (err, rows) => {
+          if (err) {
+            console.error('Erro ao buscar contas:', err);
+            return res.status(500).json({ error: 'Erro ao buscar contas' });
+          }
+          
+          // Garantir que rows é um array válido
+          // Se recebeu o objeto Result do PostgreSQL, extrair rows
+          let rowsArray = rows;
+          if (!Array.isArray(rows)) {
+            if (rows && Array.isArray(rows.rows)) {
+              // Recebeu objeto Result do PostgreSQL - extrair rows
+              rowsArray = rows.rows;
+            } else {
+              console.error('Erro: rows não é um array:', typeof rows, rows);
+              return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+            }
+          }
+          
+          // Debug: log das contas retornadas
+          console.log(`📊 Retornando ${rowsArray.length} conta(s) para jogo ${jogoId} (nome: "${jogo.nome}")`);
+          console.log(`   Buscando por nome normalizado: "${nomeNormalizado}"`);
+          const statusCount = {};
+          rowsArray.forEach(conta => {
+            statusCount[conta.status] = (statusCount[conta.status] || 0) + 1;
+          });
+          console.log('📋 Status das contas:', statusCount);
+          
+          res.json(rowsArray);
         }
-      }
-      
-      // Debug: log das contas retornadas
-      console.log(`📊 Retornando ${rowsArray.length} conta(s) para jogo ${jogoId}`);
-      const statusCount = {};
-      rowsArray.forEach(conta => {
-        statusCount[conta.status] = (statusCount[conta.status] || 0) + 1;
-      });
-      console.log('📋 Status das contas:', statusCount);
-      
-      res.json(rowsArray);
+      );
     }
   );
 };
