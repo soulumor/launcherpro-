@@ -61,48 +61,77 @@ function SyncTimer() {
               Status do Sistema
             </h3>
             {temAtualizacoes && (
-              <span className="text-xs bg-neon-green/20 border border-neon-green text-neon-green px-2 py-1 rounded animate-pulse font-bold">
-                ✨ Atualizado!
+              <span className="text-xs bg-neon-green/30 border-2 border-neon-green text-neon-green px-3 py-1.5 rounded-full animate-pulse font-bold shadow-[0_0_15px_rgba(34,197,94,0.5)]">
+                ✨ {ultimaSincronizacao.contas_adicionadas > 0 
+                  ? `${ultimaSincronizacao.contas_adicionadas} nova(s) conta(s)!` 
+                  : 'Atualizado!'}
               </span>
             )}
           </div>
           
           {ultimaSincronizacao ? (
-            <div className="space-y-2">
-              <div className="text-sm text-gray-300">
-                <span className="text-gray-400">Última atualização:</span>{' '}
-                <span className="text-neon-cyan font-bold">
-                  {new Date(ultimaSincronizacao.data_hora).toLocaleString('pt-BR')}
-                </span>
-              </div>
-              
-              {(ultimaSincronizacao.jogos_adicionados > 0 || ultimaSincronizacao.contas_adicionadas > 0) && (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-800/50 rounded border border-gray-700">
+                <div className="text-sm text-gray-300 mb-2">
+                  <span className="text-gray-400">📅 Última sincronização:</span>{' '}
+                  <span className="text-neon-cyan font-bold">
+                    {new Date(ultimaSincronizacao.data_hora).toLocaleString('pt-BR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                
                 <div className="flex gap-4 text-sm">
                   {ultimaSincronizacao.jogos_adicionados > 0 && (
                     <div className="text-gray-300">
-                      <span className="text-gray-400">Jogos:</span>{' '}
+                      <span className="text-gray-400">🎮 Jogos adicionados:</span>{' '}
                       <span className="text-neon-green font-bold">
                         +{ultimaSincronizacao.jogos_adicionados}
                       </span>
                     </div>
                   )}
-                  {ultimaSincronizacao.contas_adicionadas > 0 && (
-                    <div className="text-gray-300">
-                      <span className="text-gray-400">Contas:</span>{' '}
-                      <span className="text-neon-green font-bold">
-                        +{ultimaSincronizacao.contas_adicionadas}
-                      </span>
-                    </div>
-                  )}
+                  <div className="text-gray-300">
+                    <span className="text-gray-400">🔐 Contas adicionadas:</span>{' '}
+                    <span className={`font-bold ${
+                      ultimaSincronizacao.contas_adicionadas > 0 
+                        ? 'text-neon-green' 
+                        : 'text-gray-500'
+                    }`}>
+                      {ultimaSincronizacao.contas_adicionadas > 0 
+                        ? `+${ultimaSincronizacao.contas_adicionadas}` 
+                        : '0'}
+                    </span>
+                  </div>
                 </div>
-              )}
+                
+                {ultimaSincronizacao.status && (
+                  <div className="mt-2 text-xs">
+                    <span className={`px-2 py-1 rounded ${
+                      ultimaSincronizacao.status === 'sucesso' 
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/50' 
+                        : 'bg-red-500/20 text-red-400 border border-red-500/50'
+                    }`}>
+                      {ultimaSincronizacao.status === 'sucesso' ? '✅ Sucesso' : '❌ Erro'}
+                    </span>
+                    {ultimaSincronizacao.tipo && (
+                      <span className="ml-2 text-gray-500">
+                        ({ultimaSincronizacao.tipo === 'automatica' ? 'Automática' : 'Manual'})
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
-            <div className="mt-3 p-3 bg-gray-800 rounded border border-gray-700">
-              <p className="text-xs text-gray-400">
+            <div className="mt-3 p-3 bg-gray-800/50 rounded border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2">
                 ⏳ Nenhuma sincronização registrada ainda.
               </p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-gray-500">
                 Use o painel admin para fazer upload de contas manualmente.
               </p>
             </div>
