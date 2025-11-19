@@ -23,6 +23,12 @@ exports.listarContasPorJogo = (req, res) => {
         return res.status(500).json({ error: 'Erro ao buscar contas' });
       }
       
+      // Garantir que rows é um array válido
+      if (!Array.isArray(rows)) {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+      }
+      
       // Debug: log das contas retornadas
       console.log(`📊 Retornando ${rows.length} conta(s) para jogo ${jogoId}`);
       const statusCount = {};

@@ -200,14 +200,21 @@ exports.extrairCredenciais = async (req, res) => {
           const contas = await new Promise((resolve, reject) => {
             db.all('SELECT usuario, senha FROM contas WHERE jogo_id = ?', [jogoId], (err, rows) => {
               if (err) reject(err);
-              else resolve(rows || []);
+              else {
+                // Garantir que sempre retorna um array válido
+                const validRows = Array.isArray(rows) ? rows : [];
+                resolve(validRows);
+              }
             });
           });
           
+          // Garantir que contas é um array antes de usar .map()
+          const contasValidas = Array.isArray(contas) ? contas : [];
+          
           return res.json({
             url,
-            total: contas.length,
-            credenciais: contas.map(c => ({ user: c.usuario, pass: c.senha }))
+            total: contasValidas.length,
+            credenciais: contasValidas.map(c => ({ user: c.usuario, pass: c.senha }))
           });
         } else {
           console.log(`⚠️  Scraper local: ${scraperResponse.mensagem}`);
@@ -243,15 +250,22 @@ exports.extrairCredenciais = async (req, res) => {
       const contas = await new Promise((resolve, reject) => {
         db.all('SELECT usuario, senha FROM contas WHERE jogo_id = ?', [jogoIdParaBusca], (err, rows) => {
           if (err) reject(err);
-          else resolve(rows || []);
+          else {
+            // Garantir que sempre retorna um array válido
+            const validRows = Array.isArray(rows) ? rows : [];
+            resolve(validRows);
+          }
         });
       });
       
-      if (contas.length > 0) {
+      // Garantir que contas é um array antes de usar .map()
+      const contasValidas = Array.isArray(contas) ? contas : [];
+      
+      if (contasValidas.length > 0) {
         return res.json({
           url,
-          total: contas.length,
-          credenciais: contas.map(c => ({ user: c.usuario, pass: c.senha }))
+          total: contasValidas.length,
+          credenciais: contasValidas.map(c => ({ user: c.usuario, pass: c.senha }))
         });
       }
     }

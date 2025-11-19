@@ -16,6 +16,12 @@ exports.listarUsuarios = (req, res) => {
         return res.status(500).json({ error: 'Erro ao listar usuários' });
       }
 
+      // Garantir que usuarios é um array válido
+      if (!Array.isArray(usuarios)) {
+        console.error('Erro: usuarios não é um array:', typeof usuarios, usuarios);
+        return res.status(500).json({ error: 'Erro ao processar lista de usuários' });
+      }
+
       // Calcular dias restantes para cada usuário (admins têm acesso ilimitado)
       const usuariosComDias = usuarios.map(usuario => {
         let diasRestantes = null;

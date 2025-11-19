@@ -395,7 +395,9 @@ function getDatabase() {
         queryPromise
           .then(result => {
             if (callback) {
-              callback(null, result.rows || []);
+              // Garantir que sempre retorna um array válido
+              const rows = Array.isArray(result?.rows) ? result.rows : [];
+              callback(null, rows);
             }
           })
           .catch(err => {
