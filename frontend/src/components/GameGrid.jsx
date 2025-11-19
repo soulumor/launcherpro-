@@ -21,17 +21,37 @@ function GameGrid({ onGameClick, onJogosCountChange, gridConfig }) {
         // Buscar jogos com contagem de contas (mais eficiente - uma única query SQL)
         const response = await api.get('/api/jogos?comContas=true')
         const jogosData = response.data
-        setJogos(jogosData)
+        
+        // Deduplicar jogos por nome normalizado antes de definir no estado
+        const jogosUnicos = jogosData.reduce((acc, jogo) => {
+          const nomeNormalizado = jogo.nome?.toLowerCase().trim() || '';
+          const existente = acc.find(j => j.nome?.toLowerCase().trim() === nomeNormalizado);
+          
+          if (!existente) {
+            acc.push(jogo);
+          } else {
+            // Se já existe, somar as contas e manter o jogo com mais informações
+            existente.totalContas = (existente.totalContas || 0) + (jogo.totalContas || 0);
+            existente.contasValidas = (existente.contasValidas || 0) + (jogo.contasValidas || 0);
+            // Manter o jogo com mais informações (capa, descrição, etc)
+            if (!existente.capa && jogo.capa) existente.capa = jogo.capa;
+            if (!existente.descricao && jogo.descricao) existente.descricao = jogo.descricao;
+            if (!existente.preco && jogo.preco) existente.preco = jogo.preco;
+          }
+          return acc;
+        }, []);
+        
+        setJogos(jogosUnicos)
         setError(null)
         
-        // Notificar o componente pai sobre a quantidade de jogos
+        // Notificar o componente pai sobre a quantidade de jogos únicos
         if (onJogosCountChange) {
-          onJogosCountChange(jogosData.length)
+          onJogosCountChange(jogosUnicos.length)
         }
 
         // Usar contagens que já vêm com os jogos (muito mais rápido!)
         const contasData = {}
-        jogosData.forEach(jogo => {
+        jogosUnicos.forEach(jogo => {
           contasData[jogo.id] = {
             validas: jogo.contasValidas || 0,
             total: jogo.totalContas || 0
@@ -145,7 +165,7 @@ function GameGrid({ onGameClick, onJogosCountChange, gridConfig }) {
   return (
     <div className={gridClasses}>
       {jogos.map((jogo) => {
-        const contasInfo = contasPorJogo[jogo.id] || { validas: 0, total: 0 }
+        const contasInfo = contasPorJogo[jogo.id] || { validas: jogo.contasValidas || 0, total: jogo.totalContas || 0 }
         return (
           <GameCard
             key={jogo.id}

@@ -17,22 +17,35 @@ exports.listarJogos = (req, res) => {
   
   if (comContas === 'true') {
     // Buscar jogos com contagem de contas (mais eficiente)
+    // Agrupar por nome normalizado para evitar duplicatas
+    // Usar subquery para somar contas de todos os IDs do mesmo jogo
     db.all(`
       SELECT 
-        j.id,
-        j.nome,
-        j.descricao,
-        j.preco,
-        j.capa,
+        j_agrupado.id,
+        j_agrupado.nome,
+        j_agrupado.descricao,
+        j_agrupado.preco,
+        j_agrupado.capa,
         COUNT(DISTINCT c.id) as total_contas,
         COUNT(DISTINCT CASE 
           WHEN LOWER(c.status) IN ('disponivel', 'funcionando', 'valid') 
           THEN c.id 
         END) as contas_validas
-      FROM jogos j
-      LEFT JOIN contas c ON j.id = c.jogo_id
-      GROUP BY j.id, j.nome, j.descricao, j.preco, j.capa
-      ORDER BY j.id DESC
+      FROM (
+        SELECT 
+          MIN(j.id) as id,
+          MAX(j.nome) as nome,
+          MAX(j.descricao) as descricao,
+          MAX(j.preco) as preco,
+          MAX(j.capa) as capa,
+          LOWER(TRIM(j.nome)) as nome_normalizado
+        FROM jogos j
+        GROUP BY LOWER(TRIM(j.nome))
+      ) j_agrupado
+      LEFT JOIN jogos j_all ON LOWER(TRIM(j_all.nome)) = j_agrupado.nome_normalizado
+      LEFT JOIN contas c ON j_all.id = c.jogo_id
+      GROUP BY j_agrupado.id, j_agrupado.nome, j_agrupado.descricao, j_agrupado.preco, j_agrupado.capa
+      ORDER BY j_agrupado.id DESC
     `, [], (err, rows) => {
       if (err) {
         console.error('Erro ao buscar jogos com contas:', err);
