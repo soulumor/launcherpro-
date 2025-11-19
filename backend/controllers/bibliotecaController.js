@@ -34,18 +34,25 @@ exports.listarBiblioteca = (req, res) => {
       return res.status(500).json({ error: 'Erro ao buscar biblioteca' });
     }
     
-    // Garantir que rows é um array
+    // Garantir que rows é um array válido
+    // Se recebeu o objeto Result do PostgreSQL, extrair rows
+    let rowsArray = rows;
     if (!Array.isArray(rows)) {
-      console.error('Erro: rows não é um array:', typeof rows, rows);
-      return res.status(500).json({ error: 'Erro ao processar dados da biblioteca' });
+      if (rows && Array.isArray(rows.rows)) {
+        // Recebeu objeto Result do PostgreSQL - extrair rows
+        rowsArray = rows.rows;
+      } else {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados da biblioteca' });
+      }
     }
     
-    console.log(`📚 Biblioteca: ${rows.length} jogo(s) único(s) encontrado(s)`);
-    rows.forEach(jogo => {
+    console.log(`📚 Biblioteca: ${rowsArray.length} jogo(s) único(s) encontrado(s)`);
+    rowsArray.forEach(jogo => {
       console.log(`   - ${jogo.nome} (ID: ${jogo.jogo_id}): ${jogo.total_contas} conta(s)`);
     });
     
-    res.json(rows);
+    res.json(rowsArray);
   });
 };
 
@@ -79,14 +86,21 @@ exports.listarContasJogoBiblioteca = (req, res) => {
       return res.status(500).json({ error: 'Erro ao buscar contas' });
     }
     
-    // Garantir que rows é um array
+    // Garantir que rows é um array válido
+    // Se recebeu o objeto Result do PostgreSQL, extrair rows
+    let rowsArray = rows;
     if (!Array.isArray(rows)) {
-      console.error('Erro: rows não é um array:', typeof rows, rows);
-      return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+      if (rows && Array.isArray(rows.rows)) {
+        // Recebeu objeto Result do PostgreSQL - extrair rows
+        rowsArray = rows.rows;
+      } else {
+        console.error('Erro: rows não é um array:', typeof rows, rows);
+        return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+      }
     }
     
-    console.log(`✅ Encontradas ${rows.length} conta(s) válida(s) para o jogo ${jogoId}`);
-    res.json(rows);
+    console.log(`✅ Encontradas ${rowsArray.length} conta(s) válida(s) para o jogo ${jogoId}`);
+    res.json(rowsArray);
   });
 };
 

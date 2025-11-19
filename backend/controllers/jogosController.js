@@ -39,14 +39,21 @@ exports.listarJogos = (req, res) => {
         return res.status(500).json({ error: 'Erro ao buscar jogos' });
       }
       
-      // Garantir que rows é um array
+      // Garantir que rows é um array válido
+      // Se recebeu o objeto Result do PostgreSQL, extrair rows
+      let rowsArray = rows;
       if (!Array.isArray(rows)) {
-        console.error('Erro: rows não é um array:', typeof rows, rows);
-        return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
+        if (rows && Array.isArray(rows.rows)) {
+          // Recebeu objeto Result do PostgreSQL - extrair rows
+          rowsArray = rows.rows;
+        } else {
+          console.error('Erro: rows não é um array:', typeof rows, rows);
+          return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
+        }
       }
       
       // Formatar resposta
-      const jogos = rows.map(row => ({
+      const jogos = rowsArray.map(row => ({
         id: row.id,
         nome: row.nome,
         descricao: row.descricao,
@@ -67,13 +74,20 @@ exports.listarJogos = (req, res) => {
         return res.status(500).json({ error: 'Erro ao buscar jogos' });
       }
       
-      // Garantir que rows é um array
+      // Garantir que rows é um array válido
+      // Se recebeu o objeto Result do PostgreSQL, extrair rows
+      let rowsArray = rows;
       if (!Array.isArray(rows)) {
-        console.error('Erro: rows não é um array:', typeof rows, rows);
-        return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
+        if (rows && Array.isArray(rows.rows)) {
+          // Recebeu objeto Result do PostgreSQL - extrair rows
+          rowsArray = rows.rows;
+        } else {
+          console.error('Erro: rows não é um array:', typeof rows, rows);
+          return res.status(500).json({ error: 'Erro ao processar dados dos jogos' });
+        }
       }
       
-      res.json(rows);
+      res.json(rowsArray);
     });
   }
 };

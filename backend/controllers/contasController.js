@@ -24,20 +24,27 @@ exports.listarContasPorJogo = (req, res) => {
       }
       
       // Garantir que rows é um array válido
+      // Se recebeu o objeto Result do PostgreSQL, extrair rows
+      let rowsArray = rows;
       if (!Array.isArray(rows)) {
-        console.error('Erro: rows não é um array:', typeof rows, rows);
-        return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+        if (rows && Array.isArray(rows.rows)) {
+          // Recebeu objeto Result do PostgreSQL - extrair rows
+          rowsArray = rows.rows;
+        } else {
+          console.error('Erro: rows não é um array:', typeof rows, rows);
+          return res.status(500).json({ error: 'Erro ao processar dados das contas' });
+        }
       }
       
       // Debug: log das contas retornadas
-      console.log(`📊 Retornando ${rows.length} conta(s) para jogo ${jogoId}`);
+      console.log(`📊 Retornando ${rowsArray.length} conta(s) para jogo ${jogoId}`);
       const statusCount = {};
-      rows.forEach(conta => {
+      rowsArray.forEach(conta => {
         statusCount[conta.status] = (statusCount[conta.status] || 0) + 1;
       });
       console.log('📋 Status das contas:', statusCount);
       
-      res.json(rows);
+      res.json(rowsArray);
     }
   );
 };
