@@ -25,20 +25,52 @@ class TestadorLoginSteam {
       return this.steamCmdPath;
     }
 
-    // Verificar caminhos possíveis
-    const possiveisCaminhos = [
-      path.join(__dirname, '../../steamcmd/steamcmd.exe'), // Pasta do projeto
-      'C:\\steamcmd\\steamcmd.exe',
-      'C:\\Program Files\\steamcmd\\steamcmd.exe',
-      'C:\\Program Files (x86)\\steamcmd\\steamcmd.exe',
-      './steamcmd/steamcmd.exe',
-      'steamcmd' // Se estiver no PATH
-    ];
+    // Detectar sistema operacional
+    const isWindows = process.platform === 'win32';
+    const isLinux = process.platform === 'linux';
+    
+    // Verificar caminhos possíveis baseado no SO
+    let possiveisCaminhos = [];
+    
+    if (isWindows) {
+      possiveisCaminhos = [
+        path.join(__dirname, '../../steamcmd/steamcmd.exe'), // Pasta do projeto
+        'C:\\steamcmd\\steamcmd.exe',
+        'C:\\Program Files\\steamcmd\\steamcmd.exe',
+        'C:\\Program Files (x86)\\steamcmd\\steamcmd.exe',
+        './steamcmd/steamcmd.exe',
+        'steamcmd.exe' // Se estiver no PATH
+      ];
+    } else if (isLinux) {
+      // Caminhos para Linux (usado no Render)
+      possiveisCaminhos = [
+        path.join(__dirname, '../../steamcmd/steamcmd.sh'), // Pasta do projeto
+        path.join(__dirname, '../../steamcmd/steamcmd'), // Pasta do projeto
+        './steamcmd/steamcmd.sh',
+        './steamcmd/steamcmd',
+        '/home/steam/steamcmd/steamcmd.sh',
+        '/home/steam/steamcmd/steamcmd',
+        '~/steamcmd/steamcmd.sh',
+        '~/steamcmd/steamcmd',
+        'steamcmd' // Se estiver no PATH
+      ];
+    } else {
+      // macOS ou outro
+      possiveisCaminhos = [
+        path.join(__dirname, '../../steamcmd/steamcmd.sh'),
+        './steamcmd/steamcmd.sh',
+        'steamcmd'
+      ];
+    }
 
     for (const caminho of possiveisCaminhos) {
-      if (fs.existsSync(caminho)) {
-        this.steamCmdPath = caminho;
-        return caminho;
+      try {
+        if (fs.existsSync(caminho)) {
+          this.steamCmdPath = caminho;
+          return caminho;
+        }
+      } catch (err) {
+        // Ignorar erros de caminho inválido (ex: ~/steamcmd)
       }
     }
 
@@ -347,23 +379,53 @@ class TestadorLoginSteam {
    */
   async verificarSteamCmd() {
     try {
+      // No Linux (Render), SteamCMD geralmente não está disponível
+      // Mas vamos tentar encontrar primeiro
+      const isLinux = process.platform === 'linux';
+      const isWindows = process.platform === 'win32';
+      
+      // Se estiver no Linux e não encontrar, retornar false com mensagem específica
+      if (isLinux) {
+        const steamCmdPath = await this.encontrarSteamCmd();
+        
+        // Se não encontrou caminho válido, retornar false
+        if (!steamCmdPath || (!fs.existsSync(steamCmdPath) && steamCmdPath !== 'steamcmd')) {
+          console.log('⚠️  SteamCMD não encontrado no servidor Linux (Render)');
+          console.log('   O teste de contas Steam requer SteamCMD instalado.');
+          console.log('   SteamCMD não é instalado automaticamente em servidores Linux.');
+          return false;
+        }
+      }
+      
       const steamCmdPath = await this.encontrarSteamCmd();
       
       return new Promise((resolve) => {
-        const steamcmd = spawn(steamCmdPath, ['+quit'], {
+        // No Linux, pode ser necessário usar 'sh' para executar
+        let comando = steamCmdPath;
+        let args = ['+quit'];
+        
+        if (isLinux && steamCmdPath.endsWith('.sh')) {
+          comando = 'sh';
+          args = [steamCmdPath, '+quit'];
+        }
+        
+        const steamcmd = spawn(comando, args, {
           stdio: ['pipe', 'pipe', 'pipe']
         });
 
         steamcmd.on('close', (code) => {
-          resolve(code === 0);
+          resolve(code === 0 || code === null); // null pode significar sucesso no Linux
         });
 
-        steamcmd.on('error', () => {
+        steamcmd.on('error', (error) => {
+          console.error('Erro ao executar SteamCMD:', error.message);
           resolve(false);
         });
 
         setTimeout(() => {
-          steamcmd.kill();
+          if (!steamcmd.killed) {
+            steamcmd.kill();
+          }
           resolve(false);
         }, 5000);
       });

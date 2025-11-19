@@ -24,7 +24,14 @@ function TestadorContas({ jogo, contas, onContasAtualizadas }) {
       
       if (error.response?.status === 503) {
         setSteamCmdDisponivel(false)
-        throw new Error('SteamCMD não está disponível no servidor')
+        const errorData = error.response?.data || {}
+        const isLinux = errorData.plataforma === 'linux'
+        
+        if (isLinux) {
+          throw new Error('SteamCMD não está disponível na nuvem. Execute o backend localmente no Windows para testar contas Steam.')
+        } else {
+          throw new Error('SteamCMD não está disponível no servidor')
+        }
       }
       
       throw error
@@ -61,8 +68,19 @@ function TestadorContas({ jogo, contas, onContasAtualizadas }) {
       
       if (error.response?.status === 503) {
         setSteamCmdDisponivel(false)
-        // Se a mensagem mencionar instalação, mostrar mensagem especial
-        if (error.response?.data?.detalhes?.includes('instalar')) {
+        const errorData = error.response?.data || {}
+        const isLinux = errorData.plataforma === 'linux'
+        
+        // Se estiver na nuvem (Linux), mostrar mensagem específica
+        if (isLinux) {
+          alert('⚠️ SteamCMD não está disponível na nuvem (Render/Linux)\n\n' +
+                'O teste de contas Steam não está disponível quando o backend roda na nuvem.\n\n' +
+                '✅ Para testar contas Steam:\n' +
+                '1. Execute o backend localmente no Windows\n' +
+                '2. Certifique-se de ter SteamCMD instalado em C:\\steamcmd\\\n' +
+                '3. Use o teste de contas no backend local\n\n' +
+                '💡 O backend na nuvem é usado apenas para armazenar dados. Testes precisam rodar localmente.')
+        } else if (errorData.detalhes?.includes('instalar')) {
           setInstalandoSteamCmd(true)
           alert('🔧 SteamCMD não encontrado. O sistema está instalando automaticamente...\n\nIsso pode levar alguns minutos na primeira vez. Tente novamente em instantes.')
         } else {
@@ -135,17 +153,22 @@ function TestadorContas({ jogo, contas, onContasAtualizadas }) {
 
   if (steamCmdDisponivel === false) {
     return (
-      <div className="bg-gray-800/50 border-2 border-cyan-500/50 rounded-lg p-4 mb-4 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-        <h4 className="text-cyan-400 [text-shadow:0_0_20px_rgba(6,182,212,0.8)] font-bold mb-2">🔧 Instalação Automática do SteamCMD</h4>
-        <p className="text-gray-300 text-sm">
-          O SteamCMD será instalado automaticamente na primeira vez que você usar o testador.
-          Não é necessário baixar ou instalar nada manualmente!
+      <div className="bg-gray-800/50 border-2 border-yellow-500/50 rounded-lg p-4 mb-4 shadow-[0_0_15px_rgba(234,179,8,0.3)]">
+        <h4 className="text-yellow-400 [text-shadow:0_0_20px_rgba(234,179,8,0.8)] font-bold mb-2">⚠️ SteamCMD não disponível na nuvem</h4>
+        <p className="text-gray-300 text-sm mb-3">
+          O teste de contas Steam <strong>não está disponível</strong> quando o backend roda na nuvem (Render/Linux).
         </p>
-        <div className="mt-3 p-2 bg-gray-900/50 border border-cyan-500/30 rounded text-cyan-300 text-xs">
-          <strong className="text-cyan-400">✨ Instalação automática:</strong><br />
-          • O sistema baixa o SteamCMD do servidor oficial<br />
-          • Extrai e configura automaticamente<br />
-          • Tudo acontece na pasta do projeto (steamcmd/)
+        <div className="mt-3 p-3 bg-gray-900/50 border border-yellow-500/30 rounded text-yellow-300 text-xs">
+          <strong className="text-yellow-400">✅ Para testar contas Steam:</strong><br />
+          <div className="mt-2 space-y-1">
+            <div>1. Execute o backend <strong>localmente no Windows</strong></div>
+            <div>2. Instale SteamCMD em <code className="bg-gray-800 px-1 rounded">C:\steamcmd\</code></div>
+            <div>3. Use o teste de contas no backend local</div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-yellow-500/20">
+            <strong className="text-yellow-400">💡 Nota:</strong> O backend na nuvem é usado apenas para armazenar dados.
+            Testes de contas Steam precisam rodar localmente no Windows com SteamCMD instalado.
+          </div>
         </div>
       </div>
     )

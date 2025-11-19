@@ -100,11 +100,25 @@ exports.testarConta = async (req, res) => {
     
     // Verificar se SteamCMD está disponível
     const steamCmdDisponivel = await testador.verificarSteamCmd();
+    const isLinux = process.platform === 'linux';
+    const isWindows = process.platform === 'win32';
     
     if (!steamCmdDisponivel) {
+      let mensagem = 'SteamCMD não está disponível no servidor';
+      let detalhes = 'O testador de contas requer SteamCMD instalado';
+      
+      if (isLinux) {
+        mensagem = 'SteamCMD não está disponível no servidor (Render/Linux)';
+        detalhes = 'O teste de contas Steam não está disponível na nuvem. Para testar contas, execute o backend localmente no Windows com SteamCMD instalado.';
+      } else if (isWindows) {
+        detalhes = 'Instale o SteamCMD em C:\\steamcmd\\ ou execute o instalador automático na primeira vez.';
+      }
+      
       return res.status(503).json({ 
-        error: 'SteamCMD não está disponível no servidor',
-        detalhes: 'O testador de contas requer SteamCMD instalado'
+        error: mensagem,
+        detalhes: detalhes,
+        plataforma: process.platform,
+        solucao: isLinux ? 'Execute o backend localmente no Windows para testar contas Steam' : 'Instale o SteamCMD no servidor'
       });
     }
     
@@ -156,10 +170,25 @@ exports.testarContaPorId = async (req, res) => {
         
         // Verificar se SteamCMD está disponível
         const steamCmdDisponivel = await testador.verificarSteamCmd();
+        const isLinux = process.platform === 'linux';
+        const isWindows = process.platform === 'win32';
         
         if (!steamCmdDisponivel) {
+          let mensagem = 'SteamCMD não está disponível no servidor';
+          let detalhes = 'O testador de contas requer SteamCMD instalado';
+          
+          if (isLinux) {
+            mensagem = 'SteamCMD não está disponível no servidor (Render/Linux)';
+            detalhes = 'O teste de contas Steam não está disponível na nuvem. Para testar contas, execute o backend localmente no Windows com SteamCMD instalado.';
+          } else if (isWindows) {
+            detalhes = 'Instale o SteamCMD em C:\\steamcmd\\ ou execute o instalador automático na primeira vez.';
+          }
+          
           return res.status(503).json({ 
-            error: 'SteamCMD não está disponível no servidor' 
+            error: mensagem,
+            detalhes: detalhes,
+            plataforma: process.platform,
+            solucao: isLinux ? 'Execute o backend localmente no Windows para testar contas Steam' : 'Instale o SteamCMD no servidor'
           });
         }
         
@@ -323,10 +352,25 @@ exports.testarContasJogo = async (req, res) => {
     
     // Verificar se SteamCMD está disponível
     const steamCmdDisponivel = await testador.verificarSteamCmd();
+    const isLinux = process.platform === 'linux';
+    const isWindows = process.platform === 'win32';
     
     if (!steamCmdDisponivel) {
+      let mensagem = 'SteamCMD não está disponível no servidor';
+      let detalhes = 'O testador de contas requer SteamCMD instalado';
+      
+      if (isLinux) {
+        mensagem = 'SteamCMD não está disponível no servidor (Render/Linux)';
+        detalhes = 'O teste de contas Steam não está disponível na nuvem. Para testar contas, execute o backend localmente no Windows com SteamCMD instalado.';
+      } else if (isWindows) {
+        detalhes = 'Instale o SteamCMD em C:\\steamcmd\\ ou execute o instalador automático na primeira vez.';
+      }
+      
       return res.status(503).json({ 
-        error: 'SteamCMD não está disponível no servidor' 
+        error: mensagem,
+        detalhes: detalhes,
+        plataforma: process.platform,
+        solucao: isLinux ? 'Execute o backend localmente no Windows para testar contas Steam' : 'Instale o SteamCMD no servidor'
       });
     }
     
