@@ -17,13 +17,20 @@ exports.listarUsuarios = (req, res) => {
       }
 
       // Garantir que usuarios é um array válido
+      // Se recebeu o objeto Result do PostgreSQL, extrair rows
+      let usuariosArray = usuarios;
       if (!Array.isArray(usuarios)) {
-        console.error('Erro: usuarios não é um array:', typeof usuarios, usuarios);
-        return res.status(500).json({ error: 'Erro ao processar lista de usuários' });
+        if (usuarios && Array.isArray(usuarios.rows)) {
+          // Recebeu objeto Result do PostgreSQL - extrair rows
+          usuariosArray = usuarios.rows;
+        } else {
+          console.error('Erro: usuarios não é um array:', typeof usuarios, usuarios);
+          return res.status(500).json({ error: 'Erro ao processar lista de usuários' });
+        }
       }
 
       // Calcular dias restantes para cada usuário (admins têm acesso ilimitado)
-      const usuariosComDias = usuarios.map(usuario => {
+      const usuariosComDias = usuariosArray.map(usuario => {
         let diasRestantes = null;
         if (usuario.tipo === 'admin') {
           diasRestantes = null; // null indica ilimitado para admin

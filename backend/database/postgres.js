@@ -357,7 +357,11 @@ function getDatabase() {
         queryPromise
           .then(result => {
             if (callback) {
-              callback(null, result.rows[0] || null);
+              // Extrair primeira linha do resultado
+              const row = (result && result.rows && Array.isArray(result.rows) && result.rows.length > 0) 
+                ? result.rows[0] 
+                : null;
+              callback(null, row);
             }
           })
           .catch(err => {
@@ -395,8 +399,16 @@ function getDatabase() {
         queryPromise
           .then(result => {
             if (callback) {
-              // Garantir que sempre retorna um array válido
-              const rows = Array.isArray(result?.rows) ? result.rows : [];
+              // Extrair rows do objeto Result do PostgreSQL
+              // Se result já é um array, usar diretamente; caso contrário, extrair result.rows
+              let rows;
+              if (Array.isArray(result)) {
+                rows = result;
+              } else if (result && Array.isArray(result.rows)) {
+                rows = result.rows;
+              } else {
+                rows = [];
+              }
               callback(null, rows);
             }
           })
