@@ -2,6 +2,130 @@ const { getDatabase } = require('../database/database');
 const TestadorLoginSteam = require('../services/testadorLoginSteam');
 
 /**
+ * Helpers para garantir que os IDs de jogos usados nos uploads existam
+ */
+const normalizarNomeJogo = (nome) => {
+  return typeof nome === 'string' ? nome.trim().toLowerCase() : null;
+};
+
+const buscarJogoPorId = (db, jogoId) => {
+  return new Promise((resolve) => {
+    db.get('SELECT id, nome FROM jogos WHERE id = ?', [jogoId], (err, row) => {
+      if (err) {
+        console.error(`Erro ao buscar jogo por ID (${jogoId}):`, err);
+        return resolve(null);
+      }
+      resolve(row || null);
+    });
+  });
+};
+
+const buscarJogoPorNome = (db, nome) => {
+  const nomeNormalizado = normalizarNomeJogo(nome);
+  if (!nomeNormalizado) return Promise.resolve(null);
+  
+  return new Promise((resolve) => {
+    db.get(
+      'SELECT id, nome FROM jogos WHERE LOWER(TRIM(nome)) = ? LIMIT 1',
+      [nomeNormalizado],
+      (err, row) => {
+        if (err) {
+          console.error(`Erro ao buscar jogo por nome (${nome}):`, err);
+          return resolve(null);
+        }
+        resolve(row || null);
+      }
+    );
+  });
+};
+
+const criarJogoAutomatico = (db, { nome, descricao, preco = 0, capa = null }) => {
+  return new Promise((resolve) => {
+    db.run(
+      'INSERT INTO jogos (nome, descricao, preco, capa) VALUES (?, ?, ?, ?)',
+      [nome, descricao, preco, capa],
+      function(err) {
+        if (err) {
+          console.error('Erro ao criar jogo automaticamente durante upload:', err);
+          return resolve(null);
+        }
+        resolve(this.lastID || null);
+      }
+    );
+  });
+};
+
+async function garantirJogoParaConta({ db, conta, cacheMap, stats }) {
+  const originalIdRaw = conta.jogo_id ?? conta.jogoid ?? conta['jogo id'];
+  const originalId = parseInt(originalIdRaw, 10);
+  
+  if (!originalId || Number.isNaN(originalId)) {
+    console.warn('Conta ignorada por jogo_id inválido:', originalIdRaw);
+    return null;
+  }
+  
+  if (cacheMap.has(originalId)) {
+    return cacheMap.get(originalId);
+  }
+  
+  const jogoExistente = await buscarJogoPorId(db, originalId);
+  if (jogoExistente) {
+    cacheMap.set(originalId, originalId);
+    return originalId;
+  }
+  
+  // Tentar mapear por nome, se fornecido
+  const nomeInformado = conta.jogo_nome || conta.nome || conta.game || conta.jogo;
+  if (nomeInformado) {
+    const jogoPorNome = await buscarJogoPorNome(db, nomeInformado);
+    if (jogoPorNome) {
+      cacheMap.set(originalId, jogoPorNome.id);
+      stats.reaproveitados.push({
+        origemId: originalId,
+        destinoId: jogoPorNome.id,
+        nome: jogoPorNome.nome
+      });
+      console.log(`♻️  Reaproveitando jogo existente "${jogoPorNome.nome}" (ID ${jogoPorNome.id}) para o jogo_id original ${originalId}`);
+      return jogoPorNome.id;
+    }
+  }
+  
+  // Criar placeholder automático
+  const nomeParaCriar = nomeInformado?.trim() && nomeInformado.trim().length > 0
+    ? nomeInformado.trim()
+    : `Jogo importado #${originalId}`;
+    
+  const descricao = nomeInformado
+    ? `Criado automaticamente durante upload de contas (ID original: ${originalId}).`
+    : 'Criado automaticamente durante upload de contas (nome não informado).';
+    
+  const preco = conta.jogo_preco && !Number.isNaN(parseFloat(conta.jogo_preco))
+    ? parseFloat(conta.jogo_preco)
+    : 0;
+    
+  const novoJogoId = await criarJogoAutomatico(db, {
+    nome: nomeParaCriar,
+    descricao,
+    preco,
+    capa: conta.jogo_capa || null
+  });
+  
+  if (novoJogoId) {
+    cacheMap.set(originalId, novoJogoId);
+    stats.criados.push({
+      origemId: originalId,
+      novoId: novoJogoId,
+      nome: nomeParaCriar
+    });
+    console.log(`🆕 Jogo criado automaticamente: ${nomeParaCriar} (novo ID: ${novoJogoId}, ID original: ${originalId})`);
+    return novoJogoId;
+  }
+  
+  console.error(`❌ Não foi possível criar um jogo para o jogo_id ${originalId}. Conta será ignorada.`);
+  return null;
+}
+
+/**
  * Controller para gerenciar operações relacionadas a contas
  */
 
@@ -673,19 +797,41 @@ exports.uploadContas = async (req, res) => {
     let duplicadas = 0;
     let erros = 0;
     
+    // Estatísticas para criação/mapeamento de jogos
+    const jogoIdCache = new Map();
+    const jogosStats = {
+      criados: [],
+      reaproveitados: []
+    };
+    
     // Adicionar cada conta
     for (const conta of contas) {
       try {
-        if (!conta.jogo_id || !conta.usuario || !conta.senha) {
+        if ((!conta.jogo_id && !conta.jogoid && !conta['jogo id']) || !conta.usuario || !conta.senha) {
           erros++;
           continue;
         }
+        
+        const jogoValidoId = await garantirJogoParaConta({
+          db,
+          conta,
+          cacheMap: jogoIdCache,
+          stats: jogosStats
+        });
+        
+        if (!jogoValidoId) {
+          erros++;
+          continue;
+        }
+        
+        const jogoIdNormalizado = jogoValidoId;
+        const usuarioNormalizado = conta.usuario;
         
         // Verificar se já existe
         const existe = await new Promise((resolve) => {
           db.get(
             'SELECT id FROM contas WHERE jogo_id = ? AND LOWER(usuario) = LOWER(?)',
-            [conta.jogo_id, conta.usuario],
+            [jogoIdNormalizado, usuarioNormalizado],
             (err, row) => resolve(!!row)
           );
         });
@@ -699,7 +845,7 @@ exports.uploadContas = async (req, res) => {
         await new Promise((resolve) => {
           db.run(
             'INSERT INTO contas (jogo_id, usuario, senha, status) VALUES (?, ?, ?, ?)',
-            [conta.jogo_id, conta.usuario, conta.senha, conta.status || 'disponivel'],
+            [jogoIdNormalizado, usuarioNormalizado, conta.senha, conta.status || 'disponivel'],
             (err) => {
               if (err) {
                 console.error('Erro ao adicionar conta:', err);
@@ -718,6 +864,12 @@ exports.uploadContas = async (req, res) => {
     }
     
     console.log(`✅ Upload concluído: ${adicionadas} adicionadas, ${duplicadas} duplicadas, ${erros} erros`);
+    if (jogosStats.criados.length > 0) {
+      console.log(`   🆕 Jogos criados automaticamente: ${jogosStats.criados.length}`);
+    }
+    if (jogosStats.reaproveitados.length > 0) {
+      console.log(`   ♻️  Jogos mapeados por nome: ${jogosStats.reaproveitados.length}`);
+    }
     
     res.json({
       sucesso: true,
@@ -725,7 +877,13 @@ exports.uploadContas = async (req, res) => {
       adicionadas,
       duplicadas,
       erros,
-      mensagem: `${adicionadas} conta(s) adicionada(s) e distribuída(s) para todos os clientes! ${duplicadas > 0 ? `(${duplicadas} duplicada(s) ignorada(s))` : ''} ${erros > 0 ? `(${erros} erro(s))` : ''}`
+      jogosCriados: jogosStats.criados.length,
+      jogosReaproveitados: jogosStats.reaproveitados.length,
+      detalhesJogosCriados: jogosStats.criados.slice(0, 10),
+      detalhesJogosReaproveitados: jogosStats.reaproveitados.slice(0, 10),
+      mensagem: `${adicionadas} conta(s) adicionada(s) e distribuída(s) para todos os clientes! ${duplicadas > 0 ? `(${duplicadas} duplicada(s) ignorada(s))` : ''} ${erros > 0 ? `(${erros} erro(s))` : ''}${
+        jogosStats.criados.length > 0 ? ` (${jogosStats.criados.length} jogo(s) criado(s) automaticamente)` : ''
+      }`
     });
   } catch (error) {
     console.error('Erro ao processar arquivo:', error);
