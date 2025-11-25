@@ -1,0 +1,26 @@
+[
+  {
+    "jogo_id": 1,
+    "usuario": "teste_user1",
+    "senha": "teste_pass1"
+  },
+  {
+    "jogo_id": 1,
+    "usuario": "teste_user2",
+    "senha": "teste_pass2"
+  },
+  {
+    "jogo_id": 2,
+    "usuario": "teste_user3",
+    "senha": "teste_pass3"
+  }
+]
+
+
+
+
+
+
+
+
+

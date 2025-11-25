@@ -156,3 +156,10 @@ async function testarSupabase() {
 
 testarSupabase();
 
+
+
+
+
+
+
+

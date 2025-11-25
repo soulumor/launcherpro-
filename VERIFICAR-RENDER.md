@@ -96,3 +96,10 @@ Após corrigir, os logs devem mostrar:
 - ❌ `SQLite`
 - ❌ `DATABASE_URL não encontrada`
 
+
+
+
+
+
+
+

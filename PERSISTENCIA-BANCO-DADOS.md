@@ -243,3 +243,11 @@ Se quiser garantir 100% de persistência sem risco de perda:
 
 
 
+
+
+
+
+
+
+
+
